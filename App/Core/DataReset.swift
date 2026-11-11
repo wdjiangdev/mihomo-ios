@@ -6,7 +6,7 @@ import UIKit
 // feat/fresh-reinstall (user 2026-10-27: deleted Tern, reinstalled, every config was still there).
 //
 // Tern's data lives in the App Group container (AppShared.containerURL), its suite defaults and the Keychain (service
-// com.astemo6.tern). iOS keeps the App Group container after the app is deleted when another app of the same signing
+// com.wdjiangdev.tern). iOS keeps the App Group container after the app is deleted when another app of the same signing
 // team still uses that group, and Keychain items always survive a delete. The app's OWN sandbox (Documents, Library,
 // tmp) is always deleted with the app, so an install marker there tells a reinstall apart from an update:
 // - marker present                       → known install, nothing to do (also: no marker but the app's own
@@ -233,6 +233,7 @@ enum DataReset {
         out.failedPaths = failed
         wipeDefaults(suite: AppShared.defaults, suiteName: group, standard: .standard, standardDomain: Bundle.main.bundleIdentifier)
         out.keychainOK = wipeKeychain(service: Keychain.service, accessGroup: group)
+        _ = wipeKeychain(service: Keychain.legacyService, accessGroup: group)
         URLCache.shared.removeAllCachedResponses()
         HTTPCookieStorage.shared.removeCookies(since: .distantPast)
         WidgetBridge.reload()

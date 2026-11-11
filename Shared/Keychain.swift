@@ -11,7 +11,10 @@ import Security
 /// without touching provisioning profiles.
 enum Keychain {
     /// feat/fresh-reinstall: DataReset deletes every item of this service.
-    static let service = "com.astemo6.tern"
+    static let service = "com.wdjiangdev.tern"
+    /// Service name used before the 2026-11-11 GitHub rename (astemo6 → wdjiangdev). Items still stored
+    /// under it are moved to `service` on first read, so existing installs keep their secrets.
+    static let legacyService = "com.astemo6.tern"
 
     /// kSecAttrAccount names used through this wrapper.
     static let controllerSecretAccount = "controller-secret"
@@ -19,7 +22,7 @@ enum Keychain {
     /// r7 B01: 其他用户 passwords (JSON username → password); the app's recovery copy of secrets.json.
     static let lanUsersAccount = "lan-extra-users"
 
-    private static func baseQuery(account: String) -> [String: Any] {
+    private static func baseQuery(account: String, service: String = Keychain.service) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -33,7 +36,15 @@ enum Keychain {
 
     /// The stored value, or nil when absent / unreadable (e.g. keychain unavailable).
     static func read(_ account: String) -> String? {
-        var query = baseQuery(account: account)
+        if let v = readRaw(account, service: service) { return v }
+        // Legacy item from before the rename: move it to the current service.
+        guard let old = readRaw(account, service: legacyService) else { return nil }
+        if write(account, old) { SecItemDelete(baseQuery(account: account, service: legacyService) as CFDictionary) }
+        return old
+    }
+
+    private static func readRaw(_ account: String, service: String) -> String? {
+        var query = baseQuery(account: account, service: service)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
@@ -62,7 +73,7 @@ enum Keychain {
     }
 
     static func delete(_ account: String) {
-        let query = baseQuery(account: account)
-        SecItemDelete(query as CFDictionary)
+        SecItemDelete(baseQuery(account: account) as CFDictionary)
+        SecItemDelete(baseQuery(account: account, service: legacyService) as CFDictionary)
     }
 }

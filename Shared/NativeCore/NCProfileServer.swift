@@ -10,7 +10,7 @@ public final class NCCAProfileServer {
     private let lock = NSLock()
     private var listener: NWListener?
     private var timer: DispatchSourceTimer?
-    private let queue = DispatchQueue(label: "com.astemo6.tern.ca-profile-server")
+    private let queue = DispatchQueue(label: "com.wdjiangdev.tern.ca-profile-server")
 
     public init() {}
 
