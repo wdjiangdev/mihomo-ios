@@ -69,21 +69,29 @@ enum NCOutboundBinding {
     }
 
     /// Applies the binding to parameters of a connection to `host` (no-op unless includeAllNetworks is on).
-    static func apply(_ params: NWParameters, host: String) {
+    ///
+    /// fix/wg-endpoint-blackhole: `pinInterface: false` sets only the tunnel prohibition and leaves
+    /// `requiredInterface` unset. The pin is a creation-time snapshot: a connection that lives across a
+    /// network change (Wi-Fi ⇄ cellular, Wi-Fi rejoin) keeps sending through the interface it was created
+    /// on, and a connectionless UDP connection never reports that the interface is gone — it stays `.ready`
+    /// while every packet black-holes. Short-lived dials re-pin on every connection and self-heal; the one
+    /// long-lived connection in the core, a WireGuard peer's endpoint connection, must not pin (the
+    /// prohibition alone already keeps it off the tunnel).
+    static func apply(_ params: NWParameters, host: String, pinInterface: Bool = true) {
         guard !isLoopback(host) else { return }
         lock.lock()
         let (on, iface) = (enabled, physical)
         lock.unlock()
         guard on else { return }
         params.prohibitedInterfaceTypes = [.other]
-        if let iface { params.requiredInterface = iface }
+        if pinInterface, let iface { params.requiredInterface = iface }
     }
 
     /// `base` copied and bound — for the `.tcp` / `.udp` / `.tls` presets (shared instances must not be mutated).
-    static func params(_ base: NWParameters, host: String) -> NWParameters {
+    static func params(_ base: NWParameters, host: String, pinInterface: Bool = true) -> NWParameters {
         guard isEnabled, !isLoopback(host) else { return base }
         let p = base.copy()
-        apply(p, host: host)
+        apply(p, host: host, pinInterface: pinInterface)
         return p
     }
 

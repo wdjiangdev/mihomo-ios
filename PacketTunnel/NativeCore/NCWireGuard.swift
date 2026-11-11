@@ -838,7 +838,11 @@ final class NCWGPeer {
         let now = Date()
         if handshake != nil, now.timeIntervalSince(lastInitiation) < NCWGPeer.rekeyTimeout { return }
         guard let staticDH else { return }
-        if attemptStarted == nil { attemptStarted = now }
+        if attemptStarted == nil {
+            attemptStarted = now
+            attemptBaseSent = sentInitiations
+            attemptBaseReceived = receivedPackets
+        }
         lastInitiation = now
         retryJitter = Double.random(in: 0...0.333)
 
@@ -991,6 +995,21 @@ final class NCWGPeer {
     // MARK: Timers
 
     func tick(_ now: Date) {
+        // fix/wg-endpoint-blackhole: this attempt has sent initiation after initiation over the
+        // endpoint connection and heard nothing at all back — the connection itself is silently
+        // black-holed (a UDP NWConnection never reports a dead route). Drop it; the retransmit
+        // below reopens a fresh one on the current route / interface snapshot.
+        if customSender == nil, conn != nil, handshake != nil, let started = attemptStarted,
+           NCWGBlackhole.shouldRecreate(sentOnAttempt: sentInitiations - attemptBaseSent,
+                                        receivedOnAttempt: receivedPackets - attemptBaseReceived,
+                                        attemptAge: now.timeIntervalSince(started),
+                                        sinceLastRecreate: lastConnRecreateAt.map { now.timeIntervalSince($0) } ?? .greatestFiniteMagnitude) {
+            StartupLog.write("wireguard: \(device.name) endpoint connection to \(cfg.server):\(cfg.port) recreated mid-handshake: \(sentInitiations - attemptBaseSent) initiation(s) sent, 0 received in \(Int(now.timeIntervalSince(started))) s (silent blackhole)")
+            let stale = conn
+            conn = nil
+            stale?.cancel()
+            lastConnRecreateAt = now
+        }
         if handshake != nil, now.timeIntervalSince(lastInitiation) >= NCWGPeer.rekeyTimeout + retryJitter {
             if let started = attemptStarted, now.timeIntervalSince(started) > NCWGPeer.rekeyAttemptTime {
                 // Give up until new traffic asks again.
@@ -1029,6 +1048,11 @@ final class NCWGPeer {
     private var sentInitiations = 0
     private var receivedPackets = 0
     private var loggedSession = false
+    // fix/wg-endpoint-blackhole: per-attempt baselines (snapshotted when an attempt starts) and the
+    // last endpoint-connection recreate, for the blackhole check in tick().
+    private var attemptBaseSent = 0
+    private var attemptBaseReceived = 0
+    private var lastConnRecreateAt: Date?
 
     private func sendRaw(_ bytes: [UInt8]) {
         if let customSender {
@@ -1041,8 +1065,12 @@ final class NCWGPeer {
 
     private func openConnection() {
         let port = NWEndpoint.Port(rawValue: UInt16(clamping: cfg.port)) ?? .any
+        // fix/wg-endpoint-blackhole: no requiredInterface pin — this connection is created once per
+        // peer and reused for the peer's whole life; a pinned interface snapshot goes stale on any
+        // network change and UDP never reports it (see NCOutboundBinding.apply). The tunnel
+        // prohibition still applies, so the connection cannot loop into the tunnel.
         let c = NWConnection(host: NWEndpoint.Host(cfg.server), port: port,
-                             using: NCOutboundBinding.params(.udp, host: cfg.server))
+                             using: NCOutboundBinding.params(.udp, host: cfg.server, pinInterface: false))
         c.stateUpdateHandler = { [weak self, weak c] state in
             guard let self, let c, self.conn === c else { return }
             switch state {
