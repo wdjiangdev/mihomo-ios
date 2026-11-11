@@ -5,7 +5,7 @@
 | Checks | `checks.yml` | 推 `main` / `test/**` / `core/**`；PR；手动 | ubuntu（term-audit） |
 | Unit tests | `unit-tests.yml` | **PR 到 `main`**；手动（任意 ref）；`workflow_call` | macOS 构建 ×1 + 测试 ×1 |
 | Self-test | `ui-tests.yml` | 推 `test/**`；手动（`only` / `shard` / `extras`） | ubuntu（dedupe、plan）+ macOS 构建 ×1 + UI / unit 组合 |
-| E2E replay | `e2e-replay.yml` | 手动（`fixture`）；Self-test `extras=e2e` | macOS 构建 ×1 + 回放 ×1（仅 astemo6，需 secret） |
+| E2E replay | `e2e-replay.yml` | 手动（`fixture`）；Self-test `extras=e2e` | macOS 构建 ×1 + 回放 ×1（仅 wdjiangdev，需 secret） |
 | Proto loopback | `proto-loopback.yml` | 改动内核 / loopback 文件的推送；手动（`jobs`）；Self-test `extras=proto` | macOS 构建 ×1–2 + 每个作业 ×1 |
 | Build for testing | `build-for-testing.yml` | 只被上面几个调用（`workflow_call`） | macOS |
 | iOS IPA | `ios.yml` | 推 `main` = 发版；手动 `build_only` = 只编译 | macOS |
@@ -14,7 +14,7 @@
 和 Self-test 里的旧内核作业都已删除。
 
 推 `feat/**`、`fix/**`、`draft/**` 等工作分支**不跑任何 workflow**。要测就推到 `test/**`，或开 PR 到 `main`（跑 Checks + Unit tests），
-或手动派发：`gh workflow run unit-tests.yml -R astemo6/mihomo-ios --ref <branch>`。
+或手动派发：`gh workflow run unit-tests.yml -R wdjiangdev/mihomo-ios --ref <branch>`。
 （GitHub 按被推送提交里的 workflow 文件决定触发；基于旧提交、还没合入这版 workflow 的分支推送时仍按旧文件触发，rebase / merge 之后就不会了。Android 的 `android.yml` 在 `android/**` 分支上，另算。）
 推 `main` 一律带 `[skip ci]`，否则会触发 ios.yml 发版。
 
@@ -24,7 +24,7 @@
 - 要让「必须测试通过才能合并」真正生效，需要维护者在仓库 Settings → Branches → `main` 的保护规则里把
   **`Unit tests / unit`** 设为 required status check（workflow 只负责跑，强制在分支保护里配置）。
 - 直接推 `main`（不经 PR）不会跑 Unit tests；发版前应先走 PR，或手动派发一次。
-- Self-test 的冒烟路径和完整矩阵（astemo6）里的 `unit` 作业也会跑全部单元测试类；那是 `test/**` 上的完整自测，与 PR 上的 Unit tests 互不替代。
+- Self-test 的冒烟路径和完整矩阵（wdjiangdev）里的 `unit` 作业也会跑全部单元测试类；那是 `test/**` 上的完整自测，与 PR 上的 Unit tests 互不替代。
 
 ## 一次构建，到处测试（ci/speedup，2026-10-27）
 
@@ -38,10 +38,10 @@
   按实测时长平衡（`scripts/ci/ui-shards.py` + `scripts/ci/ui-test-times.tsv`；测试从 `UITests/*.swift` 读出，新测试自动排进去，
   第 N 个作业的 light 部分 = TernUITests 里其余全部）。同一次运行里该仓库还要跑 unit / E2E / IPA / proto-loopback 时 N = 4
   （每个约 35 分钟测试），否则 N = 5（约 28 分钟）。某个作业明显超过估计时，用新一轮运行的时长更新 tsv。
-- 单元测试单独一个 `unit` 作业（只在 astemo6 / 其它仓库跑一次，本次运行有 IPA 时排在 IPA 之后；en 镜像不再重复跑同一个单元测试包）。
+- 单元测试单独一个 `unit` 作业（只在 wdjiangdev / 其它仓库跑一次，本次运行有 IPA 时排在 IPA 之后；en 镜像不再重复跑同一个单元测试包）。
 - **全量 CI = 两次派发**（每个仓库一次，共用各自的构建）：
   ```bash
-  gh workflow run ui-tests.yml -R astemo6/mihomo-ios --ref test/xxx -f shard=full -f extras=e2e,ipa,checks
+  gh workflow run ui-tests.yml -R wdjiangdev/mihomo-ios --ref test/xxx -f shard=full -f extras=e2e,ipa,checks
   # 镜像（scripts 见 work 区 ci-mirror.sh 推 test ref）：
   gh workflow run ui-tests.yml -R astemo666/mihomo-ios --ref test/xxx -f shard=full -f extras=proto,masque-warp
   ```
@@ -92,11 +92,11 @@ gh workflow run proto-loopback.yml --ref test/<lane> -f jobs=loopback
 所以 `[only:]` / `[skip-ui]` 等标记照样生效，也不会新开 run 号。
 
 ```bash
-gh run rerun <run-id> --failed -R astemo6/mihomo-ios        # 只重跑失败的作业（及其依赖它们的作业）
-gh run rerun <run-id> --job <job-id> -R astemo6/mihomo-ios  # 只重跑某一个作业（job id 见 gh run view <run-id>）
-gh run view <run-id> -R astemo6/mihomo-ios                  # 看哪些作业失败、拿 job id
-# REST：POST /repos/astemo6/mihomo-ios/actions/runs/<run-id>/rerun-failed-jobs
-#       POST /repos/astemo6/mihomo-ios/actions/jobs/<job-id>/rerun
+gh run rerun <run-id> --failed -R wdjiangdev/mihomo-ios        # 只重跑失败的作业（及其依赖它们的作业）
+gh run rerun <run-id> --job <job-id> -R wdjiangdev/mihomo-ios  # 只重跑某一个作业（job id 见 gh run view <run-id>）
+gh run view <run-id> -R wdjiangdev/mihomo-ios                  # 看哪些作业失败、拿 job id
+# REST：POST /repos/wdjiangdev/mihomo-ios/actions/runs/<run-id>/rerun-failed-jobs
+#       POST /repos/wdjiangdev/mihomo-ios/actions/jobs/<job-id>/rerun
 ```
 
 网页：打开运行 → 右上角 Re-run jobs → Re-run failed jobs；或在左侧单个作业上点重跑图标。
@@ -105,7 +105,7 @@ gh run view <run-id> -R astemo6/mihomo-ios                  # 看哪些作业失
 
 - runner 基础设施问题（如 “Test crashed with signal kill while preparing to run tests”）、明显的偶发失败 → `--failed`。
 - 只有一个 UI 测试失败、想验证修复 → 推修复到**另一个** `test/**` 分支并带 `[only:testName]`，
-  或手动派发 Self-test：`gh workflow run ui-tests.yml -R astemo6/mihomo-ios --ref test/xxx -f only=TernUITests/TernUITests/testNN_Name`。
+  或手动派发 Self-test：`gh workflow run ui-tests.yml -R wdjiangdev/mihomo-ios --ref test/xxx -f only=TernUITests/TernUITests/testNN_Name`。
 
 ## 签名（ios.yml）
 

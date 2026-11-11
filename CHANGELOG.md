@@ -1,6 +1,6 @@
 # 更新日志
 
-按时间倒序。安装包见 [GitHub Releases](https://github.com/astemo6/mihomo-ios/releases)。v0.19.21 及之前的版本内核均为 Clash.Meta v1.19.32，之后的版本见各版本说明；中间未单独发包的版本（如 0.18.1、0.19.1–0.19.5、0.19.9–0.19.10）并入其后第一个发布版本。
+按时间倒序。安装包见 [GitHub Releases](https://github.com/wdjiangdev/mihomo-ios/releases)。v0.19.21 及之前的版本内核均为 Clash.Meta v1.19.32，之后的版本见各版本说明；中间未单独发包的版本（如 0.18.1、0.19.1–0.19.5、0.19.9–0.19.10）并入其后第一个发布版本。
 
 ## v0.20.2（NativeCore 预览版，预发布）
 

@@ -1,4 +1,4 @@
-# NativeCore: Lua Scripting and Custom Backend Protocol — Feasibility Assessment & S1 Design Note (feat/nc-lua, based on astemo6/mihomo-ios @ 6fd4bab)
+# NativeCore: Lua Scripting and Custom Backend Protocol — Feasibility Assessment & S1 Design Note (feat/nc-lua, based on wdjiangdev/mihomo-ios @ 6fd4bab)
 
 Status 2026-10-26: Feasibility evaluated as **ACCEPTABLE** (量化判定：可接受). 
 S1 delivers the formal resource cost model, Lua 5.4 C trimming scheme, architectural division and coexistence design with existing JavaScriptCore (JSC), full API surface inventory of Shadowrocket Lua backends, canonical configuration model integration across four formats with explicit status marking (`lua-status: pending_s2`), and unit tests.

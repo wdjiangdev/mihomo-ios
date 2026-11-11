@@ -84,14 +84,14 @@ concurrency:
 
 jobs:
   build-ui:
-    if: github.repository == 'astemo6/mihomo-ios' && !inputs.prebuilt && (!inputs.jobs || contains(inputs.jobs, 'loopback'))
+    if: github.repository == 'wdjiangdev/mihomo-ios' && !inputs.prebuilt && (!inputs.jobs || contains(inputs.jobs, 'loopback'))
     uses: ./.github/workflows/build-for-testing.yml
     with:
       ref: ${{ inputs.ref }}
       scheme: TernUITests
 
   build-e2e:
-    if: github.repository == 'astemo6/mihomo-ios' && !inputs.prebuilt && ((!inputs.jobs || contains(inputs.jobs, 'openconnect')) || (!inputs.jobs || contains(inputs.jobs, 'masque-ip')) || contains(inputs.jobs, 'masque-warp'))
+    if: github.repository == 'wdjiangdev/mihomo-ios' && !inputs.prebuilt && ((!inputs.jobs || contains(inputs.jobs, 'openconnect')) || (!inputs.jobs || contains(inputs.jobs, 'masque-ip')) || contains(inputs.jobs, 'masque-warp'))
     uses: ./.github/workflows/build-for-testing.yml
     with:
       ref: ${{ inputs.ref }}
@@ -99,7 +99,7 @@ jobs:
 
   loopback:
     needs: build-ui
-    if: ${{ !cancelled() && github.repository == 'astemo6/mihomo-ios' && (!inputs.jobs || contains(inputs.jobs, 'loopback')) && (needs.build-ui.result == 'success' || (inputs.prebuilt && needs.build-ui.result == 'skipped')) }}
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && (!inputs.jobs || contains(inputs.jobs, 'loopback')) && (needs.build-ui.result == 'success' || (inputs.prebuilt && needs.build-ui.result == 'skipped')) }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -186,7 +186,7 @@ jobs:
 
   openconnect:
     needs: build-e2e
-    if: ${{ !cancelled() && github.repository == 'astemo6/mihomo-ios' && (!inputs.jobs || contains(inputs.jobs, 'openconnect')) && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && (!inputs.jobs || contains(inputs.jobs, 'openconnect')) && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
     runs-on: macos-15
     timeout-minutes: 60
     env:
@@ -254,7 +254,7 @@ jobs:
 
   masque-ip:
     needs: build-e2e
-    if: ${{ !cancelled() && github.repository == 'astemo6/mihomo-ios' && (!inputs.jobs || contains(inputs.jobs, 'masque-ip')) && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && (!inputs.jobs || contains(inputs.jobs, 'masque-ip')) && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
     runs-on: macos-15
     timeout-minutes: 60
     env:
@@ -327,7 +327,7 @@ jobs:
 
   masque-warp:
     needs: build-e2e
-    if: ${{ !cancelled() && github.repository == 'astemo6/mihomo-ios' && contains(inputs.jobs, 'masque-warp') && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && contains(inputs.jobs, 'masque-warp') && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
     runs-on: macos-15
     timeout-minutes: 50
     steps:

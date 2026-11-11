@@ -6,7 +6,7 @@ Tern 是一个**全新的 App**：Bundle ID `com.astemo6.tern`（`.tunnel` / `.w
 
 > 本项目以 **GPL-3.0** 发布（见 `LICENSE` 与 `NOTICE`）。仓库里没有任何节点、证书或密钥。
 
-> ⚠️ **旧 App 的备份无法导入。** Tern 与旧 App（Go 内核 v0.19.26，代码归档在 [`archive/go-kernel-v0.19.26`](https://github.com/astemo6/mihomo-ios/tree/archive/go-kernel-v0.19.26)）可以同时安装，但不读取旧 App 的数据：请在 Tern 里重新导入订阅 / 配置链接，重新添加小组件与控制中心开关，使用 MitM 时重新安装并信任 CA。备份与恢复、WebDAV、同步文件夹、完整导出只认 Tern 自己写的文件。
+> ⚠️ **旧 App 的备份无法导入。** Tern 与旧 App（Go 内核 v0.19.26，代码归档在 [`archive/go-kernel-v0.19.26`](https://github.com/wdjiangdev/mihomo-ios/tree/archive/go-kernel-v0.19.26)）可以同时安装，但不读取旧 App 的数据：请在 Tern 里重新导入订阅 / 配置链接，重新添加小组件与控制中心开关，使用 MitM 时重新安装并信任 CA。备份与恢复、WebDAV、同步文件夹、完整导出只认 Tern 自己写的文件。
 
 ## 分支
 
@@ -15,11 +15,11 @@ Tern 是一个**全新的 App**：Bundle ID `com.astemo6.tern`（`.tunnel` / `.w
 | `main` | **新 App Tern**（NativeCore 内核，零 Go）——自 v0.20.2 起是主线；只由维护者从 `feat/nc-integrate` 快进 |
 | `feat/nc-integrate` | 集成分支：各 lane 合并、跑最终门禁，预览版从这里发布 |
 | `feat/nc-kernel` | 只同步 NativeCore 内核目录（`Shared/NativeCore`、`PacketTunnel/NativeCore`、`PacketTunnel/NativeMitM`），每次发布后同步 |
-| [`archive/go-kernel-v0.19.26`](https://github.com/astemo6/mihomo-ios/tree/archive/go-kernel-v0.19.26) | 旧 App（Go 内核）最终版 v0.19.26 的完整代码（原 `main`），标签 [`go-final-v0.19.26`](https://github.com/astemo6/mihomo-ios/releases/tag/go-final-v0.19.26)，不再改动 |
+| [`archive/go-kernel-v0.19.26`](https://github.com/wdjiangdev/mihomo-ios/tree/archive/go-kernel-v0.19.26) | 旧 App（Go 内核）最终版 v0.19.26 的完整代码（原 `main`），标签 [`go-final-v0.19.26`](https://github.com/wdjiangdev/mihomo-ios/releases/tag/go-final-v0.19.26)，不再改动 |
 
 ## 旧 Go 版（已归档）
 
-2026-10-28 起 `main` 改为 NativeCore 版 Tern。旧 App（Go 内核，gomobile `Libmihomo`，Bundle ID 与 Tern 不同）最终版 v0.19.26 的代码完整保留在分支 [`archive/go-kernel-v0.19.26`](https://github.com/astemo6/mihomo-ios/tree/archive/go-kernel-v0.19.26) 与标签 [`go-final-v0.19.26`](https://github.com/astemo6/mihomo-ios/releases/tag/go-final-v0.19.26)，其历史也仍在 `main` 的历史里（以 `git merge -s ours` 并入，未改写任何提交）。旧版不再更新；旧 App 的备份不能导入 Tern。
+2026-10-28 起 `main` 改为 NativeCore 版 Tern。旧 App（Go 内核，gomobile `Libmihomo`，Bundle ID 与 Tern 不同）最终版 v0.19.26 的代码完整保留在分支 [`archive/go-kernel-v0.19.26`](https://github.com/wdjiangdev/mihomo-ios/tree/archive/go-kernel-v0.19.26) 与标签 [`go-final-v0.19.26`](https://github.com/wdjiangdev/mihomo-ios/releases/tag/go-final-v0.19.26)，其历史也仍在 `main` 的历史里（以 `git merge -s ours` 并入，未改写任何提交）。旧版不再更新；旧 App 的备份不能导入 Tern。
 
 ## 设计原则
 
@@ -55,7 +55,7 @@ Tern 是一个**全新的 App**：Bundle ID `com.astemo6.tern`（`.tunnel` / `.w
 
 ## 更新日志
 
-各版本改动见 [CHANGELOG.md](CHANGELOG.md)，安装包见 [GitHub Releases](https://github.com/astemo6/mihomo-ios/releases)。
+各版本改动见 [CHANGELOG.md](CHANGELOG.md)，安装包见 [GitHub Releases](https://github.com/wdjiangdev/mihomo-ios/releases)。
 
 ## 软件架构
 
@@ -190,7 +190,7 @@ NativeCore 出站协议（尚未接入的节点保留在配置中、显示为不
 
 ## 开发流程
 
-1. **分支**：`main` 是 Tern（NativeCore）主线，只由维护者快进（旧 Go 版在 [`archive/go-kernel-v0.19.26`](https://github.com/astemo6/mihomo-ios/tree/archive/go-kernel-v0.19.26)，不动）；`feat/nc-integrate` 是集成分支，只由维护者合并 / 快进；`feat/nc-kernel` 只放内核，发布后同步。每个题目一条 lane：从 `feat/nc-integrate` 最新提交拉 `fix/nc-<题目>` 或 `feat/nc-<题目>`，一条 lane 只做一个题目。
+1. **分支**：`main` 是 Tern（NativeCore）主线，只由维护者快进（旧 Go 版在 [`archive/go-kernel-v0.19.26`](https://github.com/wdjiangdev/mihomo-ios/tree/archive/go-kernel-v0.19.26)，不动）；`feat/nc-integrate` 是集成分支，只由维护者合并 / 快进；`feat/nc-kernel` 只放内核，发布后同步。每个题目一条 lane：从 `feat/nc-integrate` 最新提交拉 `fix/nc-<题目>` 或 `feat/nc-<题目>`，一条 lane 只做一个题目。
 2. **提交**：作者 zhihenglu；lane 提交带 `[skip ci]`；每次提交后都推送 lane 分支到 origin。
 3. **CI 就是编译器**：本地没有 Swift 编译器。验证时把同一提交推到 `test/*` 引用再手动触发 workflow；runner 不够时用公开的 CI 镜像仓库加跑，镜像上只推 `test/*` 引用，最终代码和发布只在本仓库。
 4. **按改动跑测试**（见下表）；同一问题最多 3 轮 CI 迭代，仍不过就停下报告。

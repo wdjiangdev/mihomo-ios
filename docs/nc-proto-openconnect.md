@@ -1,4 +1,4 @@
-# NativeCore: OpenConnect (AnyConnect 兼容) — design note (feat/nc-openconnect, based on astemo6/mihomo-ios NativeCore 6fd4bab)
+# NativeCore: OpenConnect (AnyConnect 兼容) — design note (feat/nc-openconnect, based on wdjiangdev/mihomo-ios NativeCore 6fd4bab)
 
 > **Status (fix/nc-openconnect-dp, 2026-10-27): available.** Real data plane: after `CONNECT /CSCOSSLC/tunnel` the
 > TLS stream is handed to `NCOCDevice` (PacketTunnel/NativeCore/NCOpenConnectNetif.swift), one lwIP netif per node

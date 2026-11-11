@@ -872,7 +872,7 @@ struct AboutView: View {
         Credit(name: "ProjectClash", note: "Hako / Hako-Adapter 的维护者，后续项目 Clash-Adapter", license: "GPL-3.0", url: "https://github.com/ProjectClash"),
         Credit(name: "MetaCubeX/meta-rules-dat", note: "内置 GeoIP / GeoSite / ASN 数据库", license: "见上游仓库", url: "https://github.com/MetaCubeX/meta-rules-dat"),
         Credit(name: "JavaScriptCore · ICU", note: "脚本引擎（系统 JavaScriptCore）与正则引擎（Tern 自己把 regexp2 / RE2 写法转成 ICU 执行）", license: "LGPL-2.1 · Unicode", url: "https://webkit.org"),
-        Credit(name: "Tern jq", note: "Tern 自己的 jq 解释器（纯 Swift），用于 jq 请求体 / 响应体重写，语义与 jq 1.7.1 一致", license: "GPL-3.0", url: "https://github.com/astemo6/mihomo-ios"),
+        Credit(name: "Tern jq", note: "Tern 自己的 jq 解释器（纯 Swift），用于 jq 请求体 / 响应体重写，语义与 jq 1.7.1 一致", license: "GPL-3.0", url: "https://github.com/wdjiangdev/mihomo-ios"),
     ]
 
     var body: some View {
@@ -885,7 +885,7 @@ struct AboutView: View {
             Section {
                 Text("本应用以 GNU General Public License v3.0 发布，与 mihomo 内核许可一致。你可以在 GPL-3.0 的条款下自由使用、修改和再分发本软件及其源代码。本软件不提供任何担保。")
                     .font(.footnote)
-                Link("本项目源代码", destination: URL(string: "https://github.com/astemo6/mihomo-ios")!)
+                Link("本项目源代码", destination: URL(string: "https://github.com/wdjiangdev/mihomo-ios")!)
                 Link("GNU GPL v3.0 全文", destination: URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!)
             } header: { Text("开源许可") }
             .listRowBackground(Theme.card)
