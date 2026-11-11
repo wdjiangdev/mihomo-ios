@@ -66,7 +66,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.repository == 'astemo6/mihomo-ios' && !inputs.prebuilt
+    if: github.repository == 'wdjiangdev/mihomo-ios' && !inputs.prebuilt
     uses: ./.github/workflows/build-for-testing.yml
     with:
       ref: ${{ inputs.ref }}
@@ -74,7 +74,7 @@ jobs:
 
   replay:
     needs: build
-    if: ${{ !cancelled() && github.repository == 'astemo6/mihomo-ios' && (needs.build.result == 'success' || (inputs.prebuilt && needs.build.result == 'skipped')) }}
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && (needs.build.result == 'success' || (inputs.prebuilt && needs.build.result == 'skipped')) }}
     runs-on: macos-15
     timeout-minutes: 50
     env:

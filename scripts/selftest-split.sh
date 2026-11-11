@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Split Self-test across the main repo and the org mirror (two free-plan macOS concurrency pools).
-#   origin = astemo6/mihomo-ios   → ui zh-Hans light/dark
+#   origin = wdjiangdev/mihomo-ios   → ui zh-Hans light/dark
 #   mirror = astemo666/mihomo-ios → ui en light/dark
 # (shard rule lives in .github/workflows/ui-tests.yml)
 #
@@ -11,13 +11,13 @@
 #   scripts/selftest-split.sh wait <name> [secs]  poll until both finish (default 7200 s); exit like status
 #   scripts/selftest-split.sh rerun <name>        re-run failed jobs of whichever run failed
 #   scripts/selftest-split.sh clean <name>        delete test/<name> on both remotes
-# Env: MAIN_REMOTE (origin) MIRROR_REMOTE (mirror) MAIN_REPO (astemo6/mihomo-ios) MIRROR_REPO (astemo666/mihomo-ios)
+# Env: MAIN_REMOTE (origin) MIRROR_REMOTE (mirror) MAIN_REPO (wdjiangdev/mihomo-ios) MIRROR_REPO (astemo666/mihomo-ios)
 #      GITHUB_TOKEN optional (sent as Bearer when set). POLL (60 s).
 # The mirror remote is added on first use if missing. Pushes are normal (force only on the test/<name> branch).
 set -euo pipefail
 MAIN_REMOTE=${MAIN_REMOTE:-origin}
 MIRROR_REMOTE=${MIRROR_REMOTE:-mirror}
-MAIN_REPO=${MAIN_REPO:-astemo6/mihomo-ios}
+MAIN_REPO=${MAIN_REPO:-wdjiangdev/mihomo-ios}
 MIRROR_REPO=${MIRROR_REPO:-astemo666/mihomo-ios}
 POLL=${POLL:-60}
 API=https://api.github.com

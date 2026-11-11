@@ -27,7 +27,7 @@
 #   Full CI = astemo6: shard=full extras=e2e,ipa,checks  +  astemo666 mirror: shard=full extras=proto[,masque-warp].
 #
 # Org mirror sharding (doubles concurrent macOS runners; free plan = 5 macOS jobs per account/org):
-#   astemo6/mihomo-ios   → ui zh-Hans (light + dark) + unit
+#   wdjiangdev/mihomo-ios   → ui zh-Hans (light + dark) + unit
 #   astemo666/mihomo-ios → ui en (light + dark)
 #   any other repo       → everything
 # Full matrix in one repo: workflow_dispatch shard=all, or [shard:all] in the pushed commit message.
@@ -56,9 +56,9 @@
 #   Everything else (PacketTunnel/**, Geo/**, Config/**, UnitTests/**, scripts/**, .github/**,
 #   docs) is not UI-affecting → smoke.
 #   smoke = zh-Hans light SMOKE_TESTS (launch + tab/page navigation + node manager) + the `unit` combo
-#     (astemo6 / other repos; the astemo666 en mirror runs no UI job). The app, test bundle and framework are built
+#     (wdjiangdev / other repos; the astemo666 en mirror runs no UI job). The app, test bundle and framework are built
 #     in full, so a compile break still fails.
-#   full  = the repository split above: jobs 1…N per language (+ unit on astemo6 / other repos).
+#   full  = the repository split above: jobs 1…N per language (+ unit on wdjiangdev / other repos).
 # Markers / inputs (commit message of the pushed head; dispatch input `shard`):
 #   [shard:all]   / shard=all    full matrix, both languages, in this repo (wins over everything)
 #   [shard:smoke] / shard=smoke  force smoke even when UI files changed
@@ -246,7 +246,7 @@ jobs:
           # taken out below and runs in the unit job.
           # Full-matrix jobs per language: "<lang>:K/N" = shard K of N of the light tests plus the dark-appearance checks
           # (scripts/ci/ui-shards.py balances them on measured durations). N = 4 when the repository's 5 runners also
-          # carry other jobs of this run (astemo6: the unit combo, E2E, the IPA build; the mirror with proto-loopback
+          # carry other jobs of this run (wdjiangdev: the unit combo, E2E, the IPA build; the mirror with proto-loopback
           # extras), so the 4 UI jobs and the rest fill 5 runners at once; 5 otherwise and for shard=all.
           jobs_for() { local n=$1 k out=""; for k in $(seq 1 "$n"); do out="$out,\"LANG:$k/$n\""; done; echo "${out#,}"; }
           NZH=4; NEN=5
@@ -268,7 +268,7 @@ jobs:
             done
             echo "[${out#,}]"
           }
-          case "$REPO" in astemo666/mihomo-ios) MYLANG=en ;; astemo6/mihomo-ios) MYLANG=zh-Hans ;; *) MYLANG="zh-Hans en" ;; esac
+          case "$REPO" in astemo666/mihomo-ios) MYLANG=en ;; wdjiangdev/mihomo-ios) MYLANG=zh-Hans ;; *) MYLANG="zh-Hans en" ;; esac
           if [ "$SELECTION" = 1 ]; then
             case "$MODE" in
               smoke) if [ "$REPO" = astemo666/mihomo-ios ]; then COMBOS='[]'; else COMBOS='["zh-Hans:light:sel"]'; fi ;;
@@ -281,7 +281,7 @@ jobs:
               smoke) if [ "$REPO" = astemo666/mihomo-ios ]; then COMBOS='[]'; else COMBOS='["zh-Hans:light:smoke","unit"]'; fi ;;
               *) case "$REPO" in
                    astemo666/mihomo-ios) COMBOS="[$EN]" ;;
-                   astemo6/mihomo-ios) COMBOS="[$ZH,\"unit\"]" ;;
+                   wdjiangdev/mihomo-ios) COMBOS="[$ZH,\"unit\"]" ;;
                    *) COMBOS="[$ZH,$EN,\"unit\"]" ;;
                  esac ;;
             esac

@@ -37,7 +37,7 @@ concurrency:
 jobs:
   build:
     # Org mirror (astemo666/mihomo-ios) runs only its Self-test shard.
-    if: github.repository == 'astemo6/mihomo-ios'
+    if: github.repository == 'wdjiangdev/mihomo-ios'
     uses: ./.github/workflows/build-for-testing.yml
     with:
       ref: ${{ inputs.ref }}
@@ -45,7 +45,7 @@ jobs:
 
   unit:
     needs: build
-    if: github.repository == 'astemo6/mihomo-ios'
+    if: github.repository == 'wdjiangdev/mihomo-ios'
     runs-on: macos-15
     timeout-minutes: 45
     steps:

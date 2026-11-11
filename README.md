@@ -1,6 +1,6 @@
 # Tern（NativeCore 原生内核的 iOS 代理客户端）
 
-Tern 是一个**全新的 App**：Bundle ID `com.astemo6.tern`（`.tunnel` / `.widget`）、App Group `group.com.astemo6.tern`、URL scheme `tern://`。内核是自研 **NativeCore**——纯 Swift 数据面 + 内嵌 lwIP（C）与 nc_wg / nc_stack 胶水（C）+ JavaScriptCore 脚本，**零 Go**；协议 / 规则 / DNS 语义对标 [Clash.Meta](https://github.com/MetaCubeX/mihomo) 与 Surge / Loon / Quantumult X。
+Tern 是一个**全新的 App**：Bundle ID `com.wdjiangdev.tern`（`.tunnel` / `.widget`）、App Group `group.com.wdjiangdev.tern`、URL scheme `tern://`。内核是自研 **NativeCore**——纯 Swift 数据面 + 内嵌 lwIP（C）与 nc_wg / nc_stack 胶水（C）+ JavaScriptCore 脚本，**零 Go**；协议 / 规则 / DNS 语义对标 [Clash.Meta](https://github.com/MetaCubeX/mihomo) 与 Surge / Loon / Quantumult X。
 
 卡片界面（深色 / 浅色），五个标签页——首页、策略、请求、工具、更多；首页只放最常用的东西，功能页在「工具」，设置在「更多」，进阶选项收在「更多 → 高级设置」。
 
@@ -51,7 +51,7 @@ Tern 是一个**全新的 App**：Bundle ID `com.astemo6.tern`（`.tunnel` / `.w
 
 ## 更新日志
 
-各版本改动见 [CHANGELOG.md](CHANGELOG.md)，安装包见 [GitHub Releases](https://github.com/astemo6/mihomo-ios/releases)。
+各版本改动见 [CHANGELOG.md](CHANGELOG.md)，安装包见 [GitHub Releases](https://github.com/wdjiangdev/mihomo-ios/releases)。
 
 ## 软件架构
 
@@ -217,10 +217,10 @@ NativeCore 出站协议（尚未接入的节点保留在配置中、显示为不
 需要付费的 Apple Developer 账号（个人免费账号无法使用 Network Extension 能力）。
 
 1. **注册 App ID**（Certificates, Identifiers & Profiles → Identifiers → +，App IDs）：
-   - `com.astemo6.tern`：勾选 **App Groups** 和 **Network Extensions**。
-   - `com.astemo6.tern.tunnel`：同样勾选 **App Groups** 和 **Network Extensions**。
+   - `com.wdjiangdev.tern`：勾选 **App Groups** 和 **Network Extensions**。
+   - `com.wdjiangdev.tern.tunnel`：同样勾选 **App Groups** 和 **Network Extensions**。
    - 如果用自己的前缀，改 `project.yml` 顶部的 `APP_BUNDLE_ID` / `TUNNEL_BUNDLE_ID` / `APP_GROUP_ID`。
-2. **注册 App Group**：Identifiers → 右上角切到 App Groups → +，`group.com.astemo6.tern`。然后回到两个 App ID，在 App Groups 能力里 Configure，勾选这个组。
+2. **注册 App Group**：Identifiers → 右上角切到 App Groups → +，`group.com.wdjiangdev.tern`。然后回到两个 App ID，在 App Groups 能力里 Configure，勾选这个组。
 3. **证书**：Apple Development（development 方式）或 Apple Distribution（ad-hoc 方式）。在钥匙串里导出为 `.p12`（带密码）。
 4. **注册设备**（Devices → +，填 iPhone 的 UDID）。
 5. **描述文件**（Profiles → +）：类型选 iOS App Development（或 Ad Hoc），分别给两个 App ID 各建一个，选上证书和设备，下载两个 `.mobileprovision`。
@@ -243,7 +243,7 @@ NativeCore 出站协议（尚未接入的节点保留在配置中、显示为不
 下载 `*-unsigned.ipa`，用 Sideloadly / ESign / 爱思等工具，配合**开启了 Network Extension + App Groups 能力**的证书和描述文件重签。注意：
 
 - 两个 target 都必须带 `com.apple.developer.networking.networkextension = [packet-tunnel-provider]` 和 `com.apple.security.application-groups`；
-- App Group 在运行时自动解析：App、扩展和小组件各自读取包内 `embedded.mobileprovision` 中的 `com.apple.security.application-groups`；第一次按字母序取第一个系统认可的组（都不可用时再回退到 Info.plist 中的值和 `group.com.astemo6.tern`）并记住，之后优先用记住的组，其次是已有配置的组，描述文件续期后组列表变了也不会换到空容器，所以保持原 Bundle ID、用任意第三方购买的描述文件重签也能共享配置；隧道扩展 ID 从包内 PlugIns 的 packet-tunnel 扩展读取（回退为 `主程序 ID + .tunnel`），已保存的旧 VPN 配置会自动改指向新 ID；
+- App Group 在运行时自动解析：App、扩展和小组件各自读取包内 `embedded.mobileprovision` 中的 `com.apple.security.application-groups`；第一次按字母序取第一个系统认可的组（都不可用时再回退到 Info.plist 中的值和 `group.com.wdjiangdev.tern`）并记住，之后优先用记住的组，其次是已有配置的组，描述文件续期后组列表变了也不会换到空容器，所以保持原 Bundle ID、用任意第三方购买的描述文件重签也能共享配置；隧道扩展 ID 从包内 PlugIns 的 packet-tunnel 扩展读取（回退为 `主程序 ID + .tunnel`），已保存的旧 VPN 配置会自动改指向新 ID；
 - 连接失败时首页会弹窗显示原因；更多 → 诊断与反馈 显示解析出的 App Group、候选组、扩展 ID 和共享容器是否可用，组可能不对时会给出提示；
 - 免费 Apple ID 证书不包含 Network Extension 能力，连接会失败。
 
