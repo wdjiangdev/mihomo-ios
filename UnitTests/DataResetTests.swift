@@ -58,8 +58,8 @@ final class DataResetTests: XCTestCase {
         let group = try dir("group")
         XCTAssertFalse(DataReset.containerHasData(group, groupDomain: nil), "empty container")
         try put(".com.apple.mobile_container_manager.metadata.plist", in: group)
-        try put(AppShared.groupMarkerName, in: group, "com.astemo6.tern")
-        try put("Library/Preferences/group.com.astemo6.tern.plist", in: group)
+        try put(AppShared.groupMarkerName, in: group, "com.wdjiangdev.tern")
+        try put("Library/Preferences/group.com.wdjiangdev.tern.plist", in: group)
         try put("Library/Caches/x", in: group)
         XCTAssertFalse(DataReset.containerHasData(group, groupDomain: nil), "only system / App Group marker / Library")
         XCTAssertFalse(DataReset.containerHasData(group, groupDomain: [:]), "empty suite")
@@ -73,7 +73,7 @@ final class DataResetTests: XCTestCase {
     func testLaunchEvaluationAcrossInstallReinstall() throws {
         let sandbox = try dir("sandbox/Library/Application Support")
         let group = try dir("group")
-        try put(AppShared.groupMarkerName, in: group, "com.astemo6.tern")
+        try put(AppShared.groupMarkerName, in: group, "com.wdjiangdev.tern")
 
         XCTAssertEqual(InstallMarker.evaluate(markerDir: sandbox, container: group, groupDomain: nil), .firstInstall)
         XCTAssertTrue(InstallMarker.exists(in: sandbox), "first install writes the marker silently")
@@ -97,7 +97,7 @@ final class DataResetTests: XCTestCase {
     /// not a reinstall even though the group has data; the marker is written silently.
     func testUpdateFromPreMarkerBuildIsNotAReinstall() throws {
         XCTAssertEqual(InstallMarker.decide(markerPresent: false, containerHasData: true, sandboxHasState: true), .known)
-        XCTAssertTrue(InstallMarker.sandboxHasTernState([AppShared.rememberedGroupKey: "group.com.astemo6.tern"]))
+        XCTAssertTrue(InstallMarker.sandboxHasTernState([AppShared.rememberedGroupKey: "group.com.wdjiangdev.tern"]))
         XCTAssertTrue(InstallMarker.sandboxHasTernState(["onboardingDone.v1": true]))
         XCTAssertTrue(InstallMarker.sandboxHasTernState(["panels.pinned": ["speed"]]))
         XCTAssertTrue(InstallMarker.sandboxHasTernState(["panels.home.hidden": ["speed"]]))
@@ -130,13 +130,13 @@ final class DataResetTests: XCTestCase {
         ]
         for rel in tern { try put(rel, in: group) }
         try put(".com.apple.mobile_container_manager.metadata.plist", in: group)
-        try put("Library/Preferences/group.com.astemo6.tern.plist", in: group)
+        try put("Library/Preferences/group.com.wdjiangdev.tern.plist", in: group)
 
         let failed = DataReset.wipeContainer(group)
         XCTAssertEqual(failed, [])
         XCTAssertEqual(listing(group), [
             ".com.apple.mobile_container_manager.metadata.plist",
-            "Library", "Library/Preferences", "Library/Preferences/group.com.astemo6.tern.plist",
+            "Library", "Library/Preferences", "Library/Preferences/group.com.wdjiangdev.tern.plist",
         ])
         XCTAssertFalse(DataReset.containerHasData(group, groupDomain: nil), "a wiped container reads as empty")
         // Idempotent.
@@ -156,8 +156,8 @@ final class DataResetTests: XCTestCase {
     }
 
     func testWipeDefaultsClearsSuiteAndStandardDomain() throws {
-        let suiteName = "com.astemo6.tern.unittests.reset-\(UUID().uuidString)"
-        let stdName = "com.astemo6.tern.unittests.std-\(UUID().uuidString)"
+        let suiteName = "com.wdjiangdev.tern.unittests.reset-\(UUID().uuidString)"
+        let stdName = "com.wdjiangdev.tern.unittests.std-\(UUID().uuidString)"
         let suite = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         let std = try XCTUnwrap(UserDefaults(suiteName: stdName))
         suite.set("p1", forKey: "activeProfileID")
@@ -175,7 +175,7 @@ final class DataResetTests: XCTestCase {
     }
 
     func testWipeKeychainDeletesEveryAccountOfTheService() throws {
-        let service = "com.astemo6.tern.unittests.reset-\(UUID().uuidString)"
+        let service = "com.wdjiangdev.tern.unittests.reset-\(UUID().uuidString)"
         let other = service + ".other"
         func add(_ svc: String, _ account: String) -> OSStatus {
             SecItemAdd([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: svc,
@@ -203,14 +203,14 @@ final class DataResetTests: XCTestCase {
     }
 
     func testRealServiceNameIsTheOneKeychainUses() {
-        XCTAssertEqual(Keychain.service, "com.astemo6.tern")
+        XCTAssertEqual(Keychain.service, "com.wdjiangdev.tern")
     }
 
     // MARK: defaults migration (standard → App Group)
 
     func testDefaultsMigrationMovesUserSettingsOnce() throws {
-        let stdName = "com.astemo6.tern.unittests.mig-std-\(UUID().uuidString)"
-        let grpName = "com.astemo6.tern.unittests.mig-grp-\(UUID().uuidString)"
+        let stdName = "com.wdjiangdev.tern.unittests.mig-std-\(UUID().uuidString)"
+        let grpName = "com.wdjiangdev.tern.unittests.mig-grp-\(UUID().uuidString)"
         let std = try XCTUnwrap(UserDefaults(suiteName: stdName))
         let grp = try XCTUnwrap(UserDefaults(suiteName: grpName))
         defer { std.removePersistentDomain(forName: stdName); grp.removePersistentDomain(forName: grpName) }
@@ -252,8 +252,8 @@ final class DataResetTests: XCTestCase {
     /// 「在首页隐藏」 retired: hidden ids are unpinned (from either store's hidden list), the key is gone from both.
     @MainActor
     func testDropLegacyHiddenUnpinsHiddenIDs() throws {
-        let stdName = "com.astemo6.tern.unittests.hid-std-\(UUID().uuidString)"
-        let grpName = "com.astemo6.tern.unittests.hid-grp-\(UUID().uuidString)"
+        let stdName = "com.wdjiangdev.tern.unittests.hid-std-\(UUID().uuidString)"
+        let grpName = "com.wdjiangdev.tern.unittests.hid-grp-\(UUID().uuidString)"
         let std = try XCTUnwrap(UserDefaults(suiteName: stdName))
         let grp = try XCTUnwrap(UserDefaults(suiteName: grpName))
         defer { std.removePersistentDomain(forName: stdName); grp.removePersistentDomain(forName: grpName) }
@@ -284,8 +284,8 @@ final class DataResetTests: XCTestCase {
 
     /// A pre-move backup tags these settings "s:"; restoring it writes them into the group (where they are read now).
     func testOldBackupPrefsRestoreIntoTheGroup() throws {
-        let stdName = "com.astemo6.tern.unittests.bk-std-\(UUID().uuidString)"
-        let grpName = "com.astemo6.tern.unittests.bk-grp-\(UUID().uuidString)"
+        let stdName = "com.wdjiangdev.tern.unittests.bk-std-\(UUID().uuidString)"
+        let grpName = "com.wdjiangdev.tern.unittests.bk-grp-\(UUID().uuidString)"
         let std = try XCTUnwrap(UserDefaults(suiteName: stdName))
         let grp = try XCTUnwrap(UserDefaults(suiteName: grpName))
         defer { std.removePersistentDomain(forName: stdName); grp.removePersistentDomain(forName: grpName) }
