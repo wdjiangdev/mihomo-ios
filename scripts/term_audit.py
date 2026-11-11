@@ -10,7 +10,7 @@ catalog (keys and every translation), in an Info.plist display name / usage desc
 the Swift sources fails the audit (gate round 1, 10-27: lowercase included — the config format is called Clash in
 UI text). Legal attributions (GPL notices, MetaCubeX) and the repository URL wdjiangdev/mihomo-ios are allowed.
 
-Rename check (2026-10-27, the app is a new app with com.astemo6.tern ids): "mihomo" in any spelling in ANY tracked
+Rename check (2026-10-27, the app is a new app with com.wdjiangdev.tern ids): "mihomo" in any spelling in ANY tracked
 text file fails the audit unless the line is on the allow-list below — upstream attribution (MetaCubeX / GPL), the
 repository URL, the subscription User-Agent option value (servers pick the format by UA), the IPA guards that assert the
 retired core framework is not bundled — or the file is this script.

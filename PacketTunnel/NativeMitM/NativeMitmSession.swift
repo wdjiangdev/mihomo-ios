@@ -94,7 +94,7 @@ enum NativeMitmRuntime {
     /// Default when the key is absent. OFF until the memory comparison (UnitTests/NativeMitmMemoryTests)
     /// shows the native front lowering the tunnel's footprint.
     static let defaultOn = false
-    static let appGroup = "group.com.astemo6.tern"
+    static let appGroup = "group.com.wdjiangdev.tern"
 
     static var enabled: Bool { enabled(in: UserDefaults(suiteName: appGroup)) }
 

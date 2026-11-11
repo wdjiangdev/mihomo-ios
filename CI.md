@@ -112,6 +112,6 @@ gh run view <run-id> -R wdjiangdev/mihomo-ios                  # 看哪些作业
 `ios.yml` 读取 secrets `BUILD_CERTIFICATE_BASE64`、`P12_PASSWORD`、`APP_PROFILE_BASE64`、`TUNNEL_PROFILE_BASE64`、
 `WIDGET_PROFILE_BASE64`、`TEAM_ID`、`KEYCHAIN_PASSWORD`、`EXPORT_METHOD`。四个关键的（证书、App / 隧道描述文件、Team ID）
 都在时导出已签名 IPA，否则输出未签名 IPA（目前发布的都是未签名版，由用户自签）。
-Bundle ID 与 App Group 取自 `project.yml`：`com.astemo6.tern`、`com.astemo6.tern.tunnel`、`com.astemo6.tern.widget`、
-`group.com.astemo6.tern`（2026-10-27 改名）。配置签名 secrets 时，三个描述文件必须对应这三个 App ID，并包含
+Bundle ID 与 App Group 取自 `project.yml`：`com.wdjiangdev.tern`、`com.wdjiangdev.tern.tunnel`、`com.wdjiangdev.tern.widget`、
+`group.com.wdjiangdev.tern`（2026-10-27 改名）。配置签名 secrets 时，三个描述文件必须对应这三个 App ID，并包含
 Network Extensions（packet-tunnel-provider）与这个 App Group 能力；为旧 ID 生成的描述文件不能用。
