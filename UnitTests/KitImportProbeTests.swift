@@ -408,4 +408,252 @@ final class KitImportProbeTests: XCTestCase {
         att.lifetime = .keepAlways
         add(att)
     }
+
+    // MARK: addLocal product audit (probe/kit-e2e)
+
+    /// The six types that vanish between validate (FULL: OK) and the probe: present in the seed
+    /// YAML, absent from the reduced fallback — and absent from test99's results (<missing>).
+    static let probeSix = ["Tern-OpenConnect", "Tern-TrustTunnel-H2", "Tern-TrustTunnel-H3",
+                           "Tern-Sudoku", "Tern-MASQUE-IP", "Tern-MASQUE-UDP"]
+
+    /// YAML ground truth: every `- name:` under `proxies:` (before `proxy-groups:`), and the
+    /// Tern-Test group's member list — parsed line-wise off the block YAML the seed embeds.
+    static func yamlTruth(_ text: String) -> (proxies: [String], members: [String]) {
+        var proxies: [String] = []
+        var members: [String] = []
+        var section = ""
+        var inGroup = false
+        var inMembers = false
+        for rawLine in text.components(separatedBy: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line == "proxies:" { section = "proxies"; continue }
+            if line == "proxy-groups:" { section = "groups"; continue }
+            if line == "rules:" { section = "rules"; continue }
+            switch section {
+            case "proxies":
+                if line.hasPrefix("- name: ") { proxies.append(String(line.dropFirst(8))) }
+            case "groups":
+                if line.hasPrefix("- name: ") { inGroup = line.dropFirst(8) == "Tern-Test"; inMembers = false; continue }
+                if inGroup, line == "proxies:" { inMembers = true; continue }
+                if inGroup, inMembers {
+                    if line.hasPrefix("- ") { members.append(String(line.dropFirst(2))) } else { inMembers = false }
+                }
+            default: break
+            }
+        }
+        return (proxies, members)
+    }
+
+    /// Walks ProfileStore.addLocal with the exact kit seed texts (full, then reduced as the
+    /// control) and audits every layer of the product against the YAML ground truth:
+    /// the raw file bytes, the runtime-builder tree, the canonical NCConfig and its support
+    /// gate, the .conf round trip, and the /proxies JSON shape test99 reads. The seed swallows
+    /// the addLocal error behind `try?` (trying the reduced text next) — here the error is
+    /// printed verbatim, and so is each layer's name list, so the layer that drops the six
+    /// proto5 nodes is named by the diff.
+    func testKitAddLocalProductAudit() async throws {
+        let store = await ProfileStore()
+        for (label, b64) in [("FULL", UITestSeed.kitProbeB64), ("REDUCED", UITestSeed.kitProbeReducedB64)] {
+            let text = String(data: Data(base64Encoded: b64)!, encoding: .utf8)!
+            let truth = Self.yamlTruth(text)
+            var r = "===== ADDLOCAL \(label) =====\n"
+            r += "yaml-proxies(\(truth.proxies.count)): \(truth.proxies.joined(separator: ", "))\n"
+            r += "yaml-members(\(truth.members.count)): \(truth.members.joined(separator: ", "))\n"
+            let profile: Profile
+            do {
+                profile = try await store.addLocal(name: "Kit Audit \(label)", text: text)
+            } catch {
+                r += "addLocal: THREW \(error)\n"
+                print(r)
+                let att = XCTAttachment(string: r)
+                att.name = "kit-addlocal-\(label.lowercased())"
+                att.lifetime = .keepAlways
+                add(att)
+                continue
+            }
+            r += "addLocal: OK id=\(profile.id)\n"
+            let fileText = (try? String(contentsOf: profile.fileURL, encoding: .utf8)) ?? "<unreadable>"
+            let fileNames = Self.yamlTruth(fileText).proxies
+            r += "file: \(fileText == ProfileStore.normalize(text) ? "verbatim" : "DIFFERS from input")"
+            r += " proxies(\(fileNames.count)): \(fileNames.joined(separator: ", "))\n"
+            // The runtime tree the tunnel would run (Request.load: the test home has no
+            // sub-rules / chains / overrides, so this is the builder over the profile bytes).
+            let home = AppShared.homeURL.path
+            let req = NCRuntimeBuilder.Request.load(home: home, profilePath: profile.fileURL.path)
+            do {
+                let built = try NCRuntimeBuilder.build(profile: Data(fileText.utf8), req: req, fd: 0)
+                let cfg = NCConfig.decode(root: built.raw)
+                let cfgNames = cfg.proxies.map { $0.name }
+                r += "ncconfig-proxies(\(cfgNames.count)): \(cfgNames.joined(separator: ", "))\n"
+                for p in cfg.proxies {
+                    if let why = NCSupport.unsupportedReason(p) {
+                        r += "unsupported: \(p.name) (\(p.type)): \(why)\n"
+                    }
+                }
+                let g = cfg.groups.first { $0.name == "Tern-Test" }
+                r += "ncconfig-members(\(g?.proxies.count ?? -1)): \((g?.proxies ?? []).joined(separator: ", "))\n"
+                // The /proxies payload shape (NCController.proxiesJSON, private — mirrored).
+                var payload: [String: [String]] = [:]
+                for p in cfg.proxies { payload[p.name] = [] }
+                for gr in cfg.groups { payload[gr.name] = ["all: " + gr.proxies.joined(separator: ", ")] }
+                r += "controller-keys(\(payload.count)): \(payload.keys.sorted().joined(separator: ", "))\n"
+            } catch let e as NCRuntimeBuilder.BuildError {
+                r += "runtime-build: THREW \(e.message)\n"
+            } catch {
+                r += "runtime-build: THREW \(error)\n"
+            }
+            // The .conf the editor shows (TernConfStore.sync, as load() runs it).
+            let sync = TernConfStore.sync(yamlPath: profile.fileURL.path)
+            r += "conf-sync: \(sync.result)\n"
+            if let conf = sync.text {
+                let serverLines = conf.components(separatedBy: "\n").filter { $0.contains("tag=") || $0.hasPrefix("tern-node") }
+                r += "conf-server-lines(\(serverLines.count)):\n" + serverLines.joined(separator: "\n") + "\n"
+                if let parsed = try? TernConf.parse(conf) {
+                    let back = (parsed.profile["proxies"]?.array ?? []).compactMap { $0.object?["name"]?.string }
+                    r += "conf-roundtrip-proxies(\(back.count)): \(back.joined(separator: ", "))\n"
+                } else {
+                    r += "conf-roundtrip: <parse failed>\n"
+                }
+            }
+            r += "SIX: " + Self.probeSix.map { truth.proxies.contains($0) ? $0 : "\($0)(not-in-yaml)" }.joined(separator: " | ") + "\n"
+            print(r)
+            let att = XCTAttachment(string: r)
+            att.name = "kit-addlocal-\(label.lowercased())"
+            att.lifetime = .keepAlways
+            add(att)
+        }
+    }
+}
+
+extension KitImportProbeTests {
+    /// probe/kit-e2e: replay the app seed's exact pre-kit steps in the unit host, then run
+    /// the kit FULL text through the same store's addLocal with the error printed verbatim.
+    /// The pristine-home audit (testKitAddLocalProductAudit) keeps 40/40, yet the app seed
+    /// lands on the reduced 34 — the delta must be the seeded home state (provider stub,
+    /// demo profile, manual nodes) or something process-level. Deviations from the app:
+    /// no setActive (VPN reload not exercised), suffixed profile names.
+    func testKitSeedEnvironmentReplay() async throws {
+        func b64(_ s: String) -> String {
+            String(data: Data(base64Encoded: s)!, encoding: .utf8)!
+        }
+        let full = b64(UITestSeed.kitProbeB64)
+        let store = await ProfileStore()
+        var out = "===== SEED REPLAY =====\n"
+        let home = AppShared.homeURL
+        try FileManager.default.createDirectory(at: home.appendingPathComponent("proxies"), withIntermediateDirectories: true)
+        try UITestSeed.providerYAML.write(to: home.appendingPathComponent("proxies/uitest-provider.yaml"), atomically: true, encoding: .utf8)
+        out += "provider stub written\n"
+        do {
+            _ = try await store.addLocal(name: "UITest Demo (repro)", text: UITestSeed.profileYAML)
+            out += "demo addLocal: OK\n"
+        } catch { out += "demo addLocal: THREW \(error.localizedDescription)\n" }
+        do {
+            let n = try await store.addManualNodes(text: UITestSeed.manualLinks)
+            out += "manual nodes: OK (\(n))\n"
+        } catch { out += "manual nodes: THREW \(error.localizedDescription)\n" }
+        do {
+            let p = try await store.addLocal(name: "Kit Repro FULL", text: full)
+            var counts = "?"
+            if let fileText = try? String(contentsOf: p.fileURL, encoding: .utf8),
+               case .object(let m)? = NCYAML.parse(fileText) {
+                let px = (m["proxies"]?.array ?? []).compactMap { $0.object?["name"]?.string }
+                let gm = (m["proxy-groups"]?.array ?? []).first { $0.object?["name"]?.string == "Tern-Test" }
+                let members = (gm?.object?["proxies"]?.array ?? []).compactMap { $0.string }
+                counts = "file-proxies=\(px.count) members=\(members.count)"
+                out += "SIX in file: \(["Tern-OpenConnect", "Tern-TrustTunnel-H2", "Tern-TrustTunnel-H3", "Tern-Sudoku", "Tern-MASQUE-IP", "Tern-MASQUE-UDP"].map { px.contains($0) ? $0 : "\($0)(ABSENT)" }.joined(separator: " | "))\n"
+            }
+            out += "kit FULL addLocal: OK \(counts)\n"
+        } catch {
+            out += "kit FULL addLocal: THREW \(error.localizedDescription)\n"
+        }
+        print(out)
+        let att = XCTAttachment(string: out)
+        att.name = "kit-seed-replay"
+        att.lifetime = .keepAlways
+        add(att)
+    }
+}
+
+extension KitImportProbeTests {
+    /// probe/kit-e2e: run the REAL connect-path prep (prepareSyncForReplay) over the
+    /// imported kit profile in the real home, then audit every artifact the tunnel will
+    /// load: nativecore-runtime.json (raw + NCConfig.decode(jsonData:)), runtime.yaml,
+    /// and the prep report. The app UI serves the tunnel's /proxies, which is a pure
+    /// pass-through of the engine's cfg — if prep's JSON is 40/40 the loss is inside
+    /// the extension process; if it is 34, it is here.
+    func testKitPrepRuntimeAudit() async throws {
+        func b64(_ s: String) -> String {
+            String(data: Data(base64Encoded: s)!, encoding: .utf8)!
+        }
+        let full = b64(UITestSeed.kitProbeB64)
+        let store = await ProfileStore()
+        let p = try await store.addLocal(name: "Kit Prep Audit", text: full)
+        let home = AppShared.homeURL
+        var out = "===== PREP AUDIT =====\n"
+        let err = await Task.detached(priority: .userInitiated) {
+            NativeRuntimePrep.prepareSyncForReplay(home: home.path, profile: p.fileURL)
+        }.value
+        out += "prep error: \(err ?? "nil")\n"
+        // raw JSON truth (Foundation parse, independent of NCConfig)
+        let jsonURL = home.appendingPathComponent("nativecore-runtime.json")
+        if let data = try? Data(contentsOf: jsonURL),
+           let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            let px = (root["proxies"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
+            let groups = (root["proxy-groups"] as? [[String: Any]]) ?? []
+            let members = (groups.first { ($0["name"] as? String) == "Tern-Test" }?["proxies"] as? [String]) ?? []
+            out += "runtime-json proxies(\(px.count)) members(\(members.count))\n"
+            out += "SIX in json: \(["Tern-OpenConnect", "Tern-TrustTunnel-H2", "Tern-TrustTunnel-H3", "Tern-Sudoku", "Tern-MASQUE-IP", "Tern-MASQUE-UDP"].map { px.contains($0) ? $0 : "\($0)(ABSENT)" }.joined(separator: " | "))\n"
+            if let cfg = try? NCConfig.decode(jsonData: data) {
+                let gm = cfg.groups.first { $0.name == "Tern-Test" }?.proxies ?? []
+                out += "decode(jsonData:) proxies(\(cfg.proxies.count)) members(\(gm.count))\n"
+            } else { out += "decode(jsonData:): THREW\n" }
+        } else { out += "runtime-json: <unreadable>\n" }
+        if let text = try? String(contentsOf: home.appendingPathComponent("runtime.yaml"), encoding: .utf8),
+           case .object(let m)? = NCYAML.parse(text) {
+            let px = (m["proxies"]?.array ?? []).compactMap { $0.object?["name"]?.string }
+            out += "runtime-yaml proxies(\(px.count))\n"
+        } else { out += "runtime-yaml: <unreadable>\n" }
+        if let repText = try? String(contentsOf: home.appendingPathComponent("nativecore-prep.json"), encoding: .utf8) {
+            out += "prep-report: \(repText.prefix(600))\n"
+        }
+        print(out)
+        let att = XCTAttachment(string: out)
+        att.name = "kit-prep-audit"
+        att.lifetime = .keepAlways
+        add(att)
+    }
+}
+
+extension KitImportProbeTests {
+    /// probe/kit-e2e: the offline 策略 page is fed by NCProfileInspectorPort.inspectProfile
+    /// (ProfileInspector.members(of:) returns its previewGroup members verbatim). Every
+    /// audit so far bypassed this port and called the builder directly — run the port
+    /// itself over the imported kit profile and print what it sees.
+    func testKitInspectProfileAudit() async throws {
+        func b64(_ s: String) -> String {
+            String(data: Data(base64Encoded: s)!, encoding: .utf8)!
+        }
+        let full = b64(UITestSeed.kitProbeB64)
+        let store = await ProfileStore()
+        let p = try await store.addLocal(name: "Kit Inspect Audit", text: full)
+        let home = AppShared.homeURL
+        let res = await Task.detached(priority: .userInitiated) {
+            NCProfileInspectorPort.inspectProfile(home: home.path, path: p.fileURL.path)
+        }.value
+        var out = "===== INSPECT AUDIT =====\n"
+        out += "error: \(res.error ?? "nil")\n"
+        out += "proxies(\(res.proxies.count)): \(res.proxies.map(\.name).joined(separator: ", "))\n"
+        if let g = res.groups.first(where: { $0.name == "Tern-Test" }) {
+            out += "group proxies(\(g.proxies.count)) members(\(g.members?.count ?? -1)): \((g.members ?? []).joined(separator: ", "))\n"
+            out += "membersError: \(g.membersError ?? "nil")\n"
+            out += "SIX in members: \(["Tern-OpenConnect", "Tern-TrustTunnel-H2", "Tern-TrustTunnel-H3", "Tern-Sudoku", "Tern-MASQUE-IP", "Tern-MASQUE-UDP"].map { (g.members ?? []).contains($0) ? $0 : "\($0)(ABSENT)" }.joined(separator: " | "))\n"
+        } else {
+            out += "group Tern-Test: <absent> (groups: \(res.groups.map(\.name).joined(separator: ", ")))\n"
+        }
+        print(out)
+        let att = XCTAttachment(string: out)
+        att.name = "kit-inspect-audit"
+        att.lifetime = .keepAlways
+        add(att)
+    }
 }
