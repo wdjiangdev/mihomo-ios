@@ -622,7 +622,11 @@ final class NCMASQUEConnection {
 
                 // Expand URI template (RFC 9298 §3)
                 let resolvedPath = NCMASQUE.expandURITemplate(self.config.uri, target: target)
-                let authority = "\(self.config.server):\(self.config.port)"
+                // RFC 9298: :authority is the URI template's host, not the dial address. Servers
+                // validate it against their template (masque-go answers 400 on mismatch), and the
+                // two differ whenever the node URI carries a hostname — take it from the URI,
+                // exactly like CONNECT-IP does.
+                let authority = NCMASQUE.connectIPRequestTarget(self.config).authority
 
                 var extraHeaders: [(String, String)] = []
                 if let u = self.config.username, let p = self.config.password {
