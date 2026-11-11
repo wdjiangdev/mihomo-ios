@@ -106,7 +106,7 @@ enum UITestSeed {
             // probe/kit-e2e: the tools/server-test kit profile (40 reference servers on the zhiheng VPS,
             // ports 24001+) as a base64-embedded Clash YAML; test99 drives a group delay test over all of them.
             if args.contains("-UITestKitProbe"), !store.profiles.contains(where: { $0.name == "UITest Kit" }) {
-                // The kit generator emits mihomo flow-style YAML; if the full profile will not
+                // The kit generator emits Clash-style YAML; if the full profile will not
                 // import, fall back to the reduced set (proto5 types dropped) so the probe still
                 // measures everything else instead of silently staying on the demo profile.
                 var imported: Profile?
