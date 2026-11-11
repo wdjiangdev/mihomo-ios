@@ -54,7 +54,7 @@ final class H2RelayUpstreamOpener: H2UpstreamOpening {
             }
             return
         }
-        // Gap C6 (astemo6/Muse NativeCore): the dedicated h2 dial below has no relay in the native-only tunnel and went
+        // Gap C6 (wdjiangdev/Muse NativeCore): the dedicated h2 dial below has no relay in the native-only tunnel and went
         // straight to the origin whatever the rules said. Only a DIRECT route keeps it; a proxied (or rejected)
         // origin goes through NCUpstreamConnector — rules, groups, the proxy, origin TLS over the relay — offering
         // "h2, http/1.1"; NCTLSClientStream reports the origin's ALPN, so an h2 origin gets the multiplexed h2

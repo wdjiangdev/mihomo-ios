@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 // ShadowsocksR protocols and obfs beyond origin / auth_sha1_v4 / http_simple (feat/nc-proto A5, based on
-// astemo6/Muse NativeCore). Byte layouts ported from Clash.Meta v1.19.33 transport/ssr/protocol (auth_aes128_md5,
+// wdjiangdev/Muse NativeCore). Byte layouts ported from Clash.Meta v1.19.33 transport/ssr/protocol (auth_aes128_md5,
 // auth_aes128_sha1, auth_chain_a, auth_chain_b) and transport/ssr/obfs (http_simple/http_post, random_head,
 // tls1.2_ticket_auth). Per-connection buffers hold at most one frame.
 

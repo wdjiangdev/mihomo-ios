@@ -129,7 +129,7 @@ final class NCTLSClientStream: NCRelayStream {
     private var spliceBytes = 0
 
     /// ALPN the server selected (EncryptedExtensions in 1.3, ServerHello in 1.2); nil when it sent none.
-    /// Valid once the handshake completion fired (feat/nc-proto2, based on astemo6/Muse NativeCore).
+    /// Valid once the handshake completion fired (feat/nc-proto2, based on wdjiangdev/Muse NativeCore).
     private(set) var negotiatedALPN: String?
 
     /// application_layer_protocol_negotiation extension body: u16 list length, u8 name length, name.
@@ -1385,7 +1385,7 @@ final class NCTLSClientStream: NCRelayStream {
     }
 }
 
-// MARK: - TLS 1.2 fallback (feat/nc-proto A8, based on astemo6/Muse NativeCore)
+// MARK: - TLS 1.2 fallback (feat/nc-proto A8, based on wdjiangdev/Muse NativeCore)
 
 extension NCTLSClientStream {
     fileprivate static let downgradeTLS12 = Data("DOWNGRD".utf8) + Data([0x01])

@@ -24,14 +24,14 @@ final class NCUpstreamConnector: MitmUpstreamConnecting {
 
     /// policy: an explicit proxy / group / DIRECT / REJECT name instead of the rule match ($httpClient `policy`);
     /// unknown names fail. insecure: skip origin certificate verification ($httpClient `insecure`).
-    /// (astemo6/Muse NativeCore, 2026-10-25)
+    /// (wdjiangdev/Muse NativeCore, 2026-10-25)
     func open(host: String, port: Int, tls: Bool, policy: String?, insecure: Bool,
               completion: @escaping (Result<MitmUpstreamLease, Error>) -> Void) {
         open(host: host, port: port, tls: tls, policy: policy, insecure: insecure, alpn: ["http/1.1"], completion: completion)
     }
 
     /// alpn: offered to the origin on the proxied TLS path (the h2 MitM upstream offers "h2", "http/1.1"); the
-    /// lease's `negotiatedALPN` says what the origin picked (feat/nc-proto2, based on astemo6/Muse NativeCore).
+    /// lease's `negotiatedALPN` says what the origin picked (feat/nc-proto2, based on wdjiangdev/Muse NativeCore).
     func open(host: String, port: Int, tls: Bool, policy: String?, insecure: Bool, alpn: [String],
               completion: @escaping (Result<MitmUpstreamLease, Error>) -> Void) {
         open(host: host, port: port, tls: tls, policy: policy, insecure: insecure, alpn: alpn, route: nil, completion: completion)

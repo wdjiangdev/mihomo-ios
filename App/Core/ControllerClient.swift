@@ -191,7 +191,7 @@ final class ControllerClient {
     // MARK: MitM engine (/mitm on the same controller)
 
     func mitmStatus() async throws -> MitMStatus { try await get(MitMStatus.self, "/mitm/status") }
-    // NativeCore gap C4 (astemo6/Muse NativeCore): the tunnel also keeps finished MitM requests in the App Group ring
+    // NativeCore gap C4 (wdjiangdev/Muse NativeCore): the tunnel also keeps finished MitM requests in the App Group ring
     // (NativeRequestLogFile); read it when the controller is not reachable (tunnel off / restarting).
     func mitmRequests(since: Int64 = 0) async throws -> [HTTPRequestSummary] {
         do {

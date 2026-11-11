@@ -3,7 +3,7 @@ import CryptoKit
 import Foundation
 import Network
 
-// Mieru (feat/nc-proto3, based on astemo6/Muse NativeCore): pure-Swift client for the mieru v3 stream (TCP)
+// Mieru (feat/nc-proto3, based on wdjiangdev/Muse NativeCore): pure-Swift client for the mieru v3 stream (TCP)
 // and packet (UDP) underlays, ported from github.com/enfein/mieru/v3 v3.38.1 pkg/cipher + pkg/protocol
 // and apis/client (socks5
 // request inside the session, UDP via PacketOverStreamTunnel + UDPAssociateWrapper), as Clash.Meta v1.19.33

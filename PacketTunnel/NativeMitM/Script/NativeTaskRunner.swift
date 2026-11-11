@@ -1,5 +1,5 @@
 // NativeCore (feat/native-core-eval, gap C3) — $httpAPI, cron / event / generic task scripts and panels in the native-only
-// tunnel (astemo6/Muse NativeCore, 2026-10-25).
+// tunnel (wdjiangdev/Muse NativeCore, 2026-10-25).
 //
 // - NativeHTTPAPI: the Surge $httpAPI subset the retired bridge (policies, policy groups, select get/set,
 //   outbound mode get/set, current profile, reload) plus GET /v1/rules, POST /v1/dns/flush, and the two Loon

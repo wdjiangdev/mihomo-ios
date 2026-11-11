@@ -62,7 +62,7 @@ gh workflow run ui-tests.yml --ref test/<lane> -f shard=smoke
 # 协议：只跑相关 loopback 作业（jobs=loopback / openconnect / masque-ip / masque-warp，按需构建 1–2 次）
 gh workflow run proto-loopback.yml --ref test/<lane> -f jobs=loopback
 ```
-在镜像上跑（推荐，省 astemo6 runner）：先用 work 区 `ci-mirror.sh` 把同一 SHA 推到镜像的 `test/<lane>`，命令加 `-R astemo666/mihomo-ios`。
+在镜像上跑（推荐，省 wdjiangdev runner）：先用 work 区 `ci-mirror.sh` 把同一 SHA 推到镜像的 `test/<lane>`，命令加 `-R astemo666/mihomo-ios`。
 注意：镜像上 `shard=smoke` 不跑任何 UI / unit（en 镜像不跑冒烟）；单个单元测试类请用 `shard=auto` + `only=`。
 
 ## 提交信息标记（Self-test）
@@ -71,7 +71,7 @@ gh workflow run proto-loopback.yml --ref test/<lane> -f jobs=loopback
 - `[unit:Class]`：再加一个单元测试类。
 - `[skip-ui]`：不跑 macOS UI 分片。
 - `[shard:all]`：一个仓库里跑两种语言的全部组合（2×5 个作业 + unit）。**别用**——占满 macOS 配额；失败只重跑失败的部分。
-- **冒烟路径（默认 auto）**：相对 main 的 merge-base（在 main 上则相对上一个 `v*-build*` 标签）没有改动界面相关文件（App/Views、xcstrings、UITests 等）时，UI 只跑一个 zh-Hans light 冒烟组合（test01/03/04；单元测试在并行的 `unit` 作业里），否则跑完整矩阵（每种语言 N 个 light+dark 作业，astemo6 再加 unit）；`[shard:smoke]` / `[shard:full]` 或 dispatch `shard=smoke|full` 强制。
+- **冒烟路径（默认 auto）**：相对 main 的 merge-base（在 main 上则相对上一个 `v*-build*` 标签）没有改动界面相关文件（App/Views、xcstrings、UITests 等）时，UI 只跑一个 zh-Hans light 冒烟组合（test01/03/04；单元测试在并行的 `unit` 作业里），否则跑完整矩阵（每种语言 N 个 light+dark 作业，wdjiangdev 再加 unit）；`[shard:smoke]` / `[shard:full]` 或 dispatch `shard=smoke|full` 强制。
 
 ## 排队与去重
 

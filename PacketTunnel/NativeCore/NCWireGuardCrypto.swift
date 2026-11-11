@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-// feat/nc-wg (based on astemo6/Muse NativeCore): WireGuard primitives in pure Swift + CryptoKit.
+// feat/nc-wg (based on wdjiangdev/Muse NativeCore): WireGuard primitives in pure Swift + CryptoKit.
 // BLAKE2s (RFC 7693) with keyed MAC and HMAC-BLAKE2s, the Noise KDF, ChaCha20-Poly1305 with WireGuard's
 // 64-bit counter nonce, XChaCha20-Poly1305 open (cookie replies), X25519 and TAI64N.
 

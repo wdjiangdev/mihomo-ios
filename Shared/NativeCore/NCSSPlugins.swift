@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-// Shadowsocks plugins (feat/nc-proto A4, based on astemo6/Muse NativeCore), ported from Clash.Meta v1.19.33
+// Shadowsocks plugins (feat/nc-proto A4, based on wdjiangdev/Muse NativeCore), ported from Clash.Meta v1.19.33
 // transport/simple-obfs, transport/v2ray-plugin and transport/shadowtls. Each one is an NCRelayStream that carries
 // the Shadowsocks byte stream; the SS relay (NCSSRelayStream / NCSS2022RelayStream) rides on top unchanged.
 // Buffers are per-record (≤ 16 KB + header); nothing accumulates beyond one frame.
@@ -56,7 +56,7 @@ class NCFramedRelay: NCRelayStream {
 }
 
 // simple-obfs (http/tls) and v2ray-plugin (websocket + mux) live in NCSSPlugin.swift / NCSSPluginStream.swift
-// (#101, astemo6) — one implementation; nc-proto's duplicate classes were dropped at the nc-integrate merge.
+// (#101, wdjiangdev) — one implementation; nc-proto's duplicate classes were dropped at the nc-integrate merge.
 
 // MARK: - shadow-tls (v2 / v3)
 
@@ -615,7 +615,7 @@ extension NCConnector {
         }
         switch plugin {
         case "obfs", "v2ray-plugin":
-            // #101 (astemo6): simple-obfs http/tls and v2ray-plugin websocket (+mux) via NCSSPluginOptions /
+            // #101 (wdjiangdev): simple-obfs http/tls and v2ray-plugin websocket (+mux) via NCSSPluginOptions /
             // NCSSPluginStream — the same parse NCSupport gates with.
             guard let popts = NCSSPluginOptions(pluginName: plugin, opts: opts) else {
                 queue.async { completion(nil, Failure.unsupported("ss plugin \(plugin) shape unsupported (obfs http/tls, v2ray-plugin websocket)")) }

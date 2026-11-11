@@ -1,4 +1,4 @@
-// NativeCore (feat/native-core-eval, gap C4) — MitM request records in the App Group (astemo6/Muse NativeCore,
+// NativeCore (feat/native-core-eval, gap C4) — MitM request records in the App Group (wdjiangdev/Muse NativeCore,
 // 2026-10-25).
 //
 // The native-only tunnel has no the old core request log for the app to query, so the tunnel appends each FINISHED request as one

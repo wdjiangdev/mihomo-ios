@@ -162,7 +162,7 @@ struct RewriteResponse {
 }
 
 final class NativeRewriteEngine {
-    // Gap C5 (astemo6/Muse NativeCore): nothing stands behind a `.deferred(why)` — a deferred request passes
+    // Gap C5 (wdjiangdev/Muse NativeCore): nothing stands behind a `.deferred(why)` — a deferred request passes
     // through with NONE of its rules applied. So a rule the native engine cannot run is skipped on its own
     // (counted in skipStats, noted in the request log) and every other rule still applies; regexes run on
     // non-ASCII input (RWRegex.lenient), header ops apply best effort, and when scripts and body rules meet on one

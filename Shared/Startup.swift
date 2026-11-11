@@ -30,7 +30,7 @@ enum StartupLog {
     /// Review 5 P1-2: unified-log copy is private (redacted in Console / sysdiagnose unless a profile unlocks it).
     private static let logger = Logger(subsystem: "Tern", category: "startup")
 
-    /// NativeCore (gap C4, astemo6/Muse NativeCore): the native-only tunnel mirrors every line into its in-memory log
+    /// NativeCore (gap C4, wdjiangdev/Muse NativeCore): the native-only tunnel mirrors every line into its in-memory log
     /// ring (NativeLogRing) for the controller's /logs stream and /hark/logs. Called outside the file lock.
     static var tap: ((_ tag: String, _ msg: String) -> Void)?
 

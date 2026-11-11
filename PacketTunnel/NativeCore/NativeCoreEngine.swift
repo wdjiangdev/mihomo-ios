@@ -556,7 +556,7 @@ final class NativeCoreEngine {
         return body(cfg, g)
     }
 
-    /// The live group engine for the health-check scheduler / delay tester (nc-healthcheck, astemo6). Since that
+    /// The live group engine for the health-check scheduler / delay tester (nc-healthcheck, wdjiangdev). Since that
     /// change NCGroupEngine guards its own delays / alive / selections with its own lock (snapshot reads), so handing
     /// the reference out is safe; lock order is always engine → group engine.
     var groupEngine: NCGroupEngine? { locked { groups } }

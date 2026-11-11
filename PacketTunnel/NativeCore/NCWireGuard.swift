@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import Network
 
-// feat/nc-wg (based on astemo6/Muse NativeCore): WireGuard outbound for the native-only tunnel.
+// feat/nc-wg (based on wdjiangdev/Muse NativeCore): WireGuard outbound for the native-only tunnel.
 //
 // docs/nc-proto-wireguard-tuic-udp.md §2, option (a): each WireGuard node is an extra lwIP netif (lwip/nc_wg.c)
 // in the same lwIP instance as the TUN. NativeCore opens TCP / UDP client PCBs bound to that netif; the netif's

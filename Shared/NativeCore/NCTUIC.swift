@@ -3,7 +3,7 @@ import Network
 import Security
 import os
 
-/// TUIC v5 / v4 client, TCP relay (feat/nc-proto A1, based on astemo6/Muse NativeCore), protocol from Clash.Meta
+/// TUIC v5 / v4 client, TCP relay (feat/nc-proto A1, based on wdjiangdev/Muse NativeCore), protocol from Clash.Meta
 /// v1.19.33 transport/tuic. Built on Network.framework QUIC like NCHysteria2Connection:
 ///  - authentication rides a client-initiated unidirectional stream (NWProtocolQUIC.Options.direction = .unidirectional);
 ///  - the v5 token is the TLS 1.3 keying-material exporter (label = UUID bytes, context = password, 32 bytes) via

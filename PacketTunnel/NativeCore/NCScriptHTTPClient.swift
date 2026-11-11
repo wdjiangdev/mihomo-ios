@@ -1,4 +1,4 @@
-// NativeCore (feat/native-core-eval) — $httpClient through the tunnel's own routing (astemo6/Muse, 2026-10-25).
+// NativeCore (feat/native-core-eval) — $httpClient through the tunnel's own routing (wdjiangdev/Muse, 2026-10-25).
 //
 // A minimal HTTP/1.1 client on the ByteStream NCUpstreamConnector.shared.open(host:port:tls:) hands back: the
 // connector applies NativeCore's rules (direct / reject / a proxy via NCConnector, origin TLS over the relayed

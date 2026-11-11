@@ -6,7 +6,7 @@ import Security
 /// upgraded TLS stream carries IP packets, so the data plane is a lwIP netif inside the packet tunnel
 /// (PacketTunnel/NativeCore/NCOpenConnectNetif.swift, fix/nc-openconnect-dp); this file only hands it the stream,
 /// the tunnel parameters (X-CSTP-Address / -MTU / -DNS …) and any bytes read past the response header.
-/// Auth state machine and framing from astemo6's PR #159 (feat/nc-openconnect).
+/// Auth state machine and framing from wdjiangdev's PR #159 (feat/nc-openconnect).
 ///
 /// Design note: docs/nc-proto-openconnect.md.
 /// References:

@@ -1,4 +1,4 @@
-/* nc_wg: WireGuard interfaces as extra lwIP netifs (feat/nc-wg, based on astemo6/Muse NativeCore).
+/* nc_wg: WireGuard interfaces as extra lwIP netifs (feat/nc-wg, based on wdjiangdev/Muse NativeCore).
  *
  * The TUN netif (nc_stack) terminates app connections; a WireGuard device is a
  * second (third, ...) netif in the same lwIP instance whose packets are carried

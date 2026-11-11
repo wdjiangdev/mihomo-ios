@@ -1,5 +1,5 @@
 /* nc_wg: WireGuard netifs + client PCBs over the shared lwIP instance.
-   feat/nc-wg, based on astemo6/Muse NativeCore — see nc_wg.h and
+   feat/nc-wg, based on wdjiangdev/Muse NativeCore — see nc_wg.h and
    docs/nc-proto-wireguard-tuic-udp.md §2 (option a: second netif). */
 #include "nc_wg.h"
 

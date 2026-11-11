@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-// SS restls plugin (feat/native-core-eval, based on astemo6/Muse NativeCore): pure-Swift client side of restls,
+// SS restls plugin (feat/native-core-eval, based on wdjiangdev/Muse NativeCore): pure-Swift client side of restls,
 // ported from github.com/metacubex/restls-client-go v0.1.9 (the version Clash.Meta v1.19.33 pins; restls_utils,
 // conn readRecordOrCCS / writeRestlsApplicationRecord, handshake_client generateSessionID*, u_conn,
 // key_agreement eager ECDHE) as Clash.Meta transport/restls + adapter/outbound/shadowsocks drive it.

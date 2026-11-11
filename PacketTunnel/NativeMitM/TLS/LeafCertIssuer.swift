@@ -17,7 +17,7 @@ import Security
 ///     host (DNS or IP), a wildcard for sibling subdomains when the host
 ///     has >= 2 dots, plus extra names (dedup, cap 64).
 ///   - Signature algorithm: ecdsa-with-SHA256 (OID 1.2.840.10045.4.3.2) for an EC P-256 CA; for an RSA CA
-///     (gap C7, a p12 imported from another app — astemo6/Muse NativeCore) sha256WithRSAEncryption
+///     (gap C7, a p12 imported from another app — wdjiangdev/Muse NativeCore) sha256WithRSAEncryption
 ///     (1.2.840.113549.1.1.11, PKCS#1 v1.5). The leaf's own key stays EC P-256 either way (a valid chain; ECDHE-ECDSA
 ///     handshakes stay cheap), like the old core's shared leaf key.
 
