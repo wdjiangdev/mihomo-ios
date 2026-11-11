@@ -226,6 +226,24 @@ final class NCStatsRecorder {
                       start: ms, closedAt: ms))
     }
 
+    private var rewriteBlockedSeq: UInt64 = 0
+
+    /// fix/baidumap-splash: a decrypted request answered locally by a
+    /// rewrite REJECT (NativeRewriteEngine) whose target is one the user
+    /// should see as blocked (NCBaiduMapSplash.blockRule). The connection
+    /// itself stays a MitM connection (it carries the app's other API
+    /// calls), so the block is its own synthetic record through the same
+    /// funnel as dnsBlocked / guardBlocked: chains ∋ REJECT → 已拦截,
+    /// deliberately NOT counted via opened().
+    func rewriteBlocked(host: String, rule: String, tls: Bool, at: Date = Date()) {
+        lock.lock(); rewriteBlockedSeq &+= 1; let n = rewriteBlockedSeq; lock.unlock()
+        let ms = Int64(at.timeIntervalSince1970 * 1000)
+        closed(Closed(seq: 0, id: "rewrite-\(n)", network: "tcp", srcPort: 0,
+                      dstIP: "", dstPort: tls ? 443 : 80, host: host, remote: host,
+                      chains: ["REJECT"], rule: rule, up: 0, down: 0,
+                      start: ms, closedAt: ms))
+    }
+
     /// A connection closed: into the ring (seq assigned here).
     /// feat/session-records: start archiving closed connections for this connection
     /// session (truncates any previous session's archive — reconnecting zeroes records).

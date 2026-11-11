@@ -2,6 +2,15 @@
 
 按时间倒序。安装包见 [GitHub Releases](https://github.com/wdjiangdev/mihomo-ios/releases)。v0.19.21 及之前的版本内核均为 Clash.Meta v1.19.32，之后的版本见各版本说明；中间未单独发包的版本（如 0.18.1、0.19.1–0.19.5、0.19.9–0.19.10）并入其后第一个发布版本。
 
+## 未发布
+
+- **百度地图开屏广告：内置 Quantumult X 同款拦截**（真机反馈：build 569 上每次冷启动都有开屏，同一配置在 QX 下没有）。「更多 → 高级设置 → HTTPDNS 守卫」开关（默认开）现在同时负责：
+  - DNS 层拒绝 `afd.baidu.com`、`afdconf.baidu.com`、`lc.map.baidu.com`、`httpdns.baidu.com`、`httpdns.baidubce.com`；
+  - HTTPDNS 守卫内置百度 HTTPDNS 的固定入口 IP（180.76.76.112 / .200 / .220，百度智能云文档与社区规则），SDK 直接连 IP 时也会被拒绝，App 退回系统 DNS；之前守卫只解析域名，拿到的 IP 与 SDK 实际连接的不同，从未生效；
+  - 开启重写与 HTTPS 解密且证书已信任时，额外加入内置重写（同 QX：`newclient.map.baidu.com` 的 `qt=ads` 开屏配置 reject-dict，crossmarketing / usersystem/home/dynamic / noticebar / qt=bar|hw 拒绝；MitM 主机名含 `163.177.17.*` 等 IP），排在用户自己的规则之后；证书未信任时只做 DNS / IP 层，不会解密百度地图。
+  - 这些拦截都会出现在「已拦截」里（规则显示为 `HTTPDNS-GUARD,…` / `DOMAIN,…,REJECT` / `URL-REWRITE,…`）。百度地图会缓存开屏计划，升级后可能需要冷启动 2–3 次才完全消失。
+- HTTPDNS 守卫：隧道停止时不再删除已保存的解析表（只有关闭开关才删除），被系统回收后重新启动从第一条连接起就生效。
+
 ## v0.20.2（NativeCore 预览版，预发布）
 
 - **规则集 / 脚本首次下载、强制更新不再报「路径不在内核目录内」**（App Group 路径一侧解析为 `/private/var/…`、另一侧为 `/var/…`）；旧容器里的绝对路径会自动改到当前容器。
