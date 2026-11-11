@@ -1,4 +1,4 @@
-# NativeCore: TrustTunnel (AdGuard) — design note (feat/nc-trusttunnel, based on astemo6/mihomo-ios @ 6fd4bab)
+# NativeCore: TrustTunnel (AdGuard) — design note (feat/nc-trusttunnel, based on wdjiangdev/mihomo-ios @ 6fd4bab)
 
 > **Status (fix/nc-proto-trusttunnel-int, 2026-10-27):** HTTP/2 track available and loopback-verified against the official
 > endpoint. HTTP/3 (`quic: true`) is shown unavailable: the client opens no control stream / SETTINGS, writes the tunnel

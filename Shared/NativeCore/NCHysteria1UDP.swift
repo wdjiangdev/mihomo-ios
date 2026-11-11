@@ -3,7 +3,7 @@ import Darwin
 import Foundation
 import Network
 
-/// Hysteria v1 packet layer and UDP relay (feat/nc-proto2, based on astemo6/Muse NativeCore); behaviour from Clash.Meta
+/// Hysteria v1 packet layer and UDP relay (feat/nc-proto2, based on wdjiangdev/Muse NativeCore); behaviour from Clash.Meta
 /// v1.19.33 transport/hysteria.
 ///
 /// Network.framework's QUIC owns its UDP socket, so packet-level transforms (XPlus obfs, wechat-video header, port

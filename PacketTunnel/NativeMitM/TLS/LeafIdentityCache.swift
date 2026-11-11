@@ -4,7 +4,7 @@
 //
 // In pure native mode, leaf certificates are issued locally in Swift via NCCAManager / LeafCertIssuer,
 // signed by the user's CA and packaged as PKCS#12. SecPKCS12Import keeps it in memory (no keychain).
-// The bounded LRU follows astemo6's draft CertCache (origin/draft/native-mitm-b7b8 6b53dc6: normalized host key,
+// The bounded LRU follows wdjiangdev's draft CertCache (origin/draft/native-mitm-b7b8 6b53dc6: normalized host key,
 // most-recent-first eviction), plus a byte budget, since every entry pins a SecIdentity + its key in the NE.
 
 import Foundation

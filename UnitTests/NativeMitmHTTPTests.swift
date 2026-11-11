@@ -438,7 +438,7 @@ final class NativeMitmHTTPTests: XCTestCase {
         }
     }
 
-    // MARK: - Header rewrite (port of astemo6's draft HeaderRewrite, fixed)
+    // MARK: - Header rewrite (port of wdjiangdev's draft HeaderRewrite, fixed)
 
     func testHeaderRewriteRejectsCRLFPair() {
         var h = HTTPRequestHead(method: "GET", target: "/", headers: [("Host", "h")])

@@ -6,7 +6,7 @@ import Foundation
 /// - Clash.Meta (≥ 1.19.21) `type: sudoku` field names are the canonical node fields here; importers
 ///   (sudoku:// short links / URIs, Surge-style and Quantumult X lines) normalise into them, and the
 ///   official nested `httpmask:` block is still honoured (it overrides the flat keys, as in Clash.Meta).
-/// - First draft (parsing, KIP / AEAD framing, interop analysis) by astemo6 (#162); data plane made
+/// - First draft (parsing, KIP / AEAD framing, interop analysis) by wdjiangdev (#162); data plane made
 ///   wire-compatible in fix/nc-sudoku-interop (NCSudokuWire / NCSudokuSession).
 /// - Design note: docs/nc-proto-sudoku.md
 enum NCSudoku {

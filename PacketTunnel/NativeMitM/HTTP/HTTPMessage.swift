@@ -7,10 +7,10 @@
 //
 // Byte faithfulness: start lines and header lines are decoded as ISO-8859-1, which maps every byte 0x00–0xFF to exactly
 // one scalar, so obs-text / non-UTF-8 header values survive parse → modify → serialize unchanged (this closes OPEN #5 of
-// astemo6's B8 draft, which decoded lossily as UTF-8). A head nobody modified serializes as its original rawBytes.
+// wdjiangdev's B8 draft, which decoded lossily as UTF-8). A head nobody modified serializes as its original rawBytes.
 //
 // Credits: header semantics (the old core `Header.Set` position rule, never folding duplicates, obs-fold rejection, fail-closed
-// typed errors, re-framing rules) follow astemo6's draft drafts/native-mitm/HTTPMessage.swift (origin/draft/native-mitm-
+// typed errors, re-framing rules) follow wdjiangdev's draft drafts/native-mitm/HTTPMessage.swift (origin/draft/native-mitm-
 // b7b8 6b53dc6); the parser itself was rewritten byte-level and incremental (HTTPParser.swift).
 
 import Foundation

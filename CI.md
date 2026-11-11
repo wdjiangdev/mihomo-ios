@@ -5,7 +5,7 @@
 | Checks | `checks.yml` | 推 `main` / `test/**` / `core/**`；PR；手动 | ubuntu（term-audit） |
 | Unit tests | `unit-tests.yml` | **PR 到 `main`**；手动（任意 ref）；`workflow_call` | macOS 构建 ×1 + 测试 ×1 |
 | Self-test | `ui-tests.yml` | 推 `test/**`；手动（`only` / `shard` / `extras`） | ubuntu（dedupe、plan）+ macOS 构建 ×1 + UI / unit 组合 |
-| E2E replay | `e2e-replay.yml` | 手动（`fixture`）；Self-test `extras=e2e` | macOS 构建 ×1 + 回放 ×1（仅 astemo6，需 secret） |
+| E2E replay | `e2e-replay.yml` | 手动（`fixture`）；Self-test `extras=e2e` | macOS 构建 ×1 + 回放 ×1（仅 wdjiangdev，需 secret） |
 | Proto loopback | `proto-loopback.yml` | 改动内核 / loopback 文件的推送；手动（`jobs`）；Self-test `extras=proto` | macOS 构建 ×1–2 + 每个作业 ×1 |
 | Build for testing | `build-for-testing.yml` | 只被上面几个调用（`workflow_call`） | macOS |
 | iOS IPA | `ios.yml` | 推 `main` = 发版；手动 `build_only` = 只编译 | macOS |
@@ -14,7 +14,7 @@
 和 Self-test 里的旧内核作业都已删除。
 
 推 `feat/**`、`fix/**`、`draft/**` 等工作分支**不跑任何 workflow**。要测就推到 `test/**`，或开 PR 到 `main`（跑 Checks + Unit tests），
-或手动派发：`gh workflow run unit-tests.yml -R astemo6/mihomo-ios --ref <branch>`。
+或手动派发：`gh workflow run unit-tests.yml -R wdjiangdev/mihomo-ios --ref <branch>`。
 （GitHub 按被推送提交里的 workflow 文件决定触发；基于旧提交、还没合入这版 workflow 的分支推送时仍按旧文件触发，rebase / merge 之后就不会了。Android 的 `android.yml` 在 `android/**` 分支上，另算。）
 推 `main` 一律带 `[skip ci]`，否则会触发 ios.yml 发版。
 
@@ -24,7 +24,7 @@
 - 要让「必须测试通过才能合并」真正生效，需要维护者在仓库 Settings → Branches → `main` 的保护规则里把
   **`Unit tests / unit`** 设为 required status check（workflow 只负责跑，强制在分支保护里配置）。
 - 直接推 `main`（不经 PR）不会跑 Unit tests；发版前应先走 PR，或手动派发一次。
-- Self-test 的冒烟路径和完整矩阵（astemo6）里的 `unit` 作业也会跑全部单元测试类；那是 `test/**` 上的完整自测，与 PR 上的 Unit tests 互不替代。
+- Self-test 的冒烟路径和完整矩阵（wdjiangdev）里的 `unit` 作业也会跑全部单元测试类；那是 `test/**` 上的完整自测，与 PR 上的 Unit tests 互不替代。
 
 ## 一次构建，到处测试（ci/speedup，2026-10-27）
 
@@ -38,10 +38,10 @@
   按实测时长平衡（`scripts/ci/ui-shards.py` + `scripts/ci/ui-test-times.tsv`；测试从 `UITests/*.swift` 读出，新测试自动排进去，
   第 N 个作业的 light 部分 = TernUITests 里其余全部）。同一次运行里该仓库还要跑 unit / E2E / IPA / proto-loopback 时 N = 4
   （每个约 35 分钟测试），否则 N = 5（约 28 分钟）。某个作业明显超过估计时，用新一轮运行的时长更新 tsv。
-- 单元测试单独一个 `unit` 作业（只在 astemo6 / 其它仓库跑一次，本次运行有 IPA 时排在 IPA 之后；en 镜像不再重复跑同一个单元测试包）。
+- 单元测试单独一个 `unit` 作业（只在 wdjiangdev / 其它仓库跑一次，本次运行有 IPA 时排在 IPA 之后；en 镜像不再重复跑同一个单元测试包）。
 - **全量 CI = 两次派发**（每个仓库一次，共用各自的构建）：
   ```bash
-  gh workflow run ui-tests.yml -R astemo6/mihomo-ios --ref test/xxx -f shard=full -f extras=e2e,ipa,checks
+  gh workflow run ui-tests.yml -R wdjiangdev/mihomo-ios --ref test/xxx -f shard=full -f extras=e2e,ipa,checks
   # 镜像（scripts 见 work 区 ci-mirror.sh 推 test ref）：
   gh workflow run ui-tests.yml -R astemo666/mihomo-ios --ref test/xxx -f shard=full -f extras=proto,masque-warp
   ```
@@ -62,7 +62,7 @@ gh workflow run ui-tests.yml --ref test/<lane> -f shard=smoke
 # 协议：只跑相关 loopback 作业（jobs=loopback / openconnect / masque-ip / masque-warp，按需构建 1–2 次）
 gh workflow run proto-loopback.yml --ref test/<lane> -f jobs=loopback
 ```
-在镜像上跑（推荐，省 astemo6 runner）：先用 work 区 `ci-mirror.sh` 把同一 SHA 推到镜像的 `test/<lane>`，命令加 `-R astemo666/mihomo-ios`。
+在镜像上跑（推荐，省 wdjiangdev runner）：先用 work 区 `ci-mirror.sh` 把同一 SHA 推到镜像的 `test/<lane>`，命令加 `-R astemo666/mihomo-ios`。
 注意：镜像上 `shard=smoke` 不跑任何 UI / unit（en 镜像不跑冒烟）；单个单元测试类请用 `shard=auto` + `only=`。
 
 ## 提交信息标记（Self-test）
@@ -71,7 +71,7 @@ gh workflow run proto-loopback.yml --ref test/<lane> -f jobs=loopback
 - `[unit:Class]`：再加一个单元测试类。
 - `[skip-ui]`：不跑 macOS UI 分片。
 - `[shard:all]`：一个仓库里跑两种语言的全部组合（2×5 个作业 + unit）。**别用**——占满 macOS 配额；失败只重跑失败的部分。
-- **冒烟路径（默认 auto）**：相对 main 的 merge-base（在 main 上则相对上一个 `v*-build*` 标签）没有改动界面相关文件（App/Views、xcstrings、UITests 等）时，UI 只跑一个 zh-Hans light 冒烟组合（test01/03/04；单元测试在并行的 `unit` 作业里），否则跑完整矩阵（每种语言 N 个 light+dark 作业，astemo6 再加 unit）；`[shard:smoke]` / `[shard:full]` 或 dispatch `shard=smoke|full` 强制。
+- **冒烟路径（默认 auto）**：相对 main 的 merge-base（在 main 上则相对上一个 `v*-build*` 标签）没有改动界面相关文件（App/Views、xcstrings、UITests 等）时，UI 只跑一个 zh-Hans light 冒烟组合（test01/03/04；单元测试在并行的 `unit` 作业里），否则跑完整矩阵（每种语言 N 个 light+dark 作业，wdjiangdev 再加 unit）；`[shard:smoke]` / `[shard:full]` 或 dispatch `shard=smoke|full` 强制。
 
 ## 排队与去重
 
@@ -92,11 +92,11 @@ gh workflow run proto-loopback.yml --ref test/<lane> -f jobs=loopback
 所以 `[only:]` / `[skip-ui]` 等标记照样生效，也不会新开 run 号。
 
 ```bash
-gh run rerun <run-id> --failed -R astemo6/mihomo-ios        # 只重跑失败的作业（及其依赖它们的作业）
-gh run rerun <run-id> --job <job-id> -R astemo6/mihomo-ios  # 只重跑某一个作业（job id 见 gh run view <run-id>）
-gh run view <run-id> -R astemo6/mihomo-ios                  # 看哪些作业失败、拿 job id
-# REST：POST /repos/astemo6/mihomo-ios/actions/runs/<run-id>/rerun-failed-jobs
-#       POST /repos/astemo6/mihomo-ios/actions/jobs/<job-id>/rerun
+gh run rerun <run-id> --failed -R wdjiangdev/mihomo-ios        # 只重跑失败的作业（及其依赖它们的作业）
+gh run rerun <run-id> --job <job-id> -R wdjiangdev/mihomo-ios  # 只重跑某一个作业（job id 见 gh run view <run-id>）
+gh run view <run-id> -R wdjiangdev/mihomo-ios                  # 看哪些作业失败、拿 job id
+# REST：POST /repos/wdjiangdev/mihomo-ios/actions/runs/<run-id>/rerun-failed-jobs
+#       POST /repos/wdjiangdev/mihomo-ios/actions/jobs/<job-id>/rerun
 ```
 
 网页：打开运行 → 右上角 Re-run jobs → Re-run failed jobs；或在左侧单个作业上点重跑图标。
@@ -105,13 +105,13 @@ gh run view <run-id> -R astemo6/mihomo-ios                  # 看哪些作业失
 
 - runner 基础设施问题（如 “Test crashed with signal kill while preparing to run tests”）、明显的偶发失败 → `--failed`。
 - 只有一个 UI 测试失败、想验证修复 → 推修复到**另一个** `test/**` 分支并带 `[only:testName]`，
-  或手动派发 Self-test：`gh workflow run ui-tests.yml -R astemo6/mihomo-ios --ref test/xxx -f only=TernUITests/TernUITests/testNN_Name`。
+  或手动派发 Self-test：`gh workflow run ui-tests.yml -R wdjiangdev/mihomo-ios --ref test/xxx -f only=TernUITests/TernUITests/testNN_Name`。
 
 ## 签名（ios.yml）
 
 `ios.yml` 读取 secrets `BUILD_CERTIFICATE_BASE64`、`P12_PASSWORD`、`APP_PROFILE_BASE64`、`TUNNEL_PROFILE_BASE64`、
 `WIDGET_PROFILE_BASE64`、`TEAM_ID`、`KEYCHAIN_PASSWORD`、`EXPORT_METHOD`。四个关键的（证书、App / 隧道描述文件、Team ID）
 都在时导出已签名 IPA，否则输出未签名 IPA（目前发布的都是未签名版，由用户自签）。
-Bundle ID 与 App Group 取自 `project.yml`：`com.astemo6.tern`、`com.astemo6.tern.tunnel`、`com.astemo6.tern.widget`、
-`group.com.astemo6.tern`（2026-10-27 改名）。配置签名 secrets 时，三个描述文件必须对应这三个 App ID，并包含
+Bundle ID 与 App Group 取自 `project.yml`：`com.wdjiangdev.tern`、`com.wdjiangdev.tern.tunnel`、`com.wdjiangdev.tern.widget`、
+`group.com.wdjiangdev.tern`（2026-10-27 改名）。配置签名 secrets 时，三个描述文件必须对应这三个 App ID，并包含
 Network Extensions（packet-tunnel-provider）与这个 App Group 能力；为旧 ID 生成的描述文件不能用。

@@ -8,9 +8,9 @@ are a different concept and are skipped. Exit code 1 when anything is inconsiste
 r7 brand check: the app is Tern. A user-visible "mihomo" in any spelling (the old app / core name) in the string
 catalog (keys and every translation), in an Info.plist display name / usage description, or in a UI string literal of
 the Swift sources fails the audit (gate round 1, 10-27: lowercase included — the config format is called Clash in
-UI text). Legal attributions (GPL notices, MetaCubeX) and the repository URL astemo6/mihomo-ios are allowed.
+UI text). Legal attributions (GPL notices, MetaCubeX) and the repository URL wdjiangdev/mihomo-ios are allowed.
 
-Rename check (2026-10-27, the app is a new app with com.astemo6.tern ids): "mihomo" in any spelling in ANY tracked
+Rename check (2026-10-27, the app is a new app with com.wdjiangdev.tern ids): "mihomo" in any spelling in ANY tracked
 text file fails the audit unless the line is on the allow-list below — upstream attribution (MetaCubeX / GPL), the
 repository URL, the subscription User-Agent option value (servers pick the format by UA), the IPA guards that assert the
 retired core framework is not bundled — or the file is this script.
@@ -48,7 +48,7 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 SKIP_PATH_PREFIXES = ("UITests", "UnitTests")
 BRAND = re.compile(r"\bmihomo\b", re.I)
 # Attribution and legal text that may keep the upstream name.
-BRAND_OK = re.compile(r"MetaCubeX|General Public License|GPL|astemo6+/mihomo-ios", re.I)
+BRAND_OK = re.compile(r"MetaCubeX|General Public License|GPL|(?:astemo6+|wdjiangdev)/mihomo-ios", re.I)
 # Repository-wide rename check (any tracked text file, code, comments and docs alike).
 REPO_BRAND = re.compile(r"mihomo", re.I)
 REPO_OK_FILES = {"scripts/term_audit.py"}
@@ -59,9 +59,9 @@ STRICT_ALLOWED = {
     ("App/Views/SubscriptionSheets.swift", 'static let metaCore = "mihomo"'),
     # Open-source credits / licence attribution (About → 开源许可).
     ("App/Views/MoreView.swift", 'Credit(name: "mihomo", note: "代理内核（MetaCubeX）", license: "GPL-3.0", url: "https://github.com/MetaCubeX/mihomo"),'),
-    ("App/Views/MoreView.swift", 'Credit(name: "Tern jq", note: "Tern 自己的 jq 解释器（纯 Swift），用于 jq 请求体 / 响应体重写，语义与 jq 1.7.1 一致", license: "GPL-3.0", url: "https://github.com/astemo6/mihomo-ios"),'),
+    ("App/Views/MoreView.swift", 'Credit(name: "Tern jq", note: "Tern 自己的 jq 解释器（纯 Swift），用于 jq 请求体 / 响应体重写，语义与 jq 1.7.1 一致", license: "GPL-3.0", url: "https://github.com/wdjiangdev/mihomo-ios"),'),
     ("App/Views/MoreView.swift", 'Text("本应用以 GNU General Public License v3.0 发布，与 mihomo 内核许可一致。你可以在 GPL-3.0 的条款下自由使用、修改和再分发本软件及其源代码。本软件不提供任何担保。")'),
-    ("App/Views/MoreView.swift", 'Link("本项目源代码", destination: URL(string: "https://github.com/astemo6/mihomo-ios")!)'),
+    ("App/Views/MoreView.swift", 'Link("本项目源代码", destination: URL(string: "https://github.com/wdjiangdev/mihomo-ios")!)'),
     # The same licence text in the string catalog (key + translations).
     ("App/Localizable.xcstrings", '"本应用以 GNU General Public License v3.0 发布，与 mihomo 内核许可一致。你可以在 GPL-3.0 的条款下自由使用、修改和再分发本软件及其源代码。本软件不提供任何担保。": {'),
     ("App/Localizable.xcstrings", '"value": "This app is released under the GNU General Public License v3.0, the same license as the mihomo core. You may use, modify and redistribute this software and its source code under the terms of GPL-3.0. This software comes with no warranty."'),
@@ -72,7 +72,7 @@ STRICT_ALLOWED = {
 }
 # "mihomo/" as a path segment of ours (not Libmihomo/…, not mihomo-ios/…, not the upstream MetaCubeX/mihomo URL).
 PATH_BRAND = re.compile(r"(?<!MetaCubeX/)(?<![\w-])mihomo/", re.I)
-REPO_OK_LINE = re.compile(r"MetaCubeX|General Public License|\bGPL\b|astemo6+/mihomo-ios|SubscriptionUA|metaCore")
+REPO_OK_LINE = re.compile(r"MetaCubeX|General Public License|\bGPL\b|(?:astemo6+|wdjiangdev)/mihomo-ios|SubscriptionUA|metaCore")
 # The IPA guards (retired core framework must not be bundled) keep the framework name, in these files only.
 REPO_OK_GUARD = {".github/workflows/ios.yml": re.compile(r"Libmihomo"), "scripts/ipa_size.py": re.compile(r"Libmihomo")}
 BINARY_EXT = (".dat", ".png", ".mmdb", ".jpeg", ".jpg", ".metadb", ".mrs", ".p12", ".cer", ".der", ".zip", ".gz", ".br", ".ipa")

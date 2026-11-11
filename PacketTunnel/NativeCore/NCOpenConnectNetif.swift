@@ -25,7 +25,7 @@ import Network
 // backoff 0.5 s … 30 s, 6 attempts. fix/nc-oc-dtls: DTLS (ocserv PSK-NEGOTIATE, pure-Swift NCDTLS12PSK) is attempted
 // next to CSTP after every CONNECT; uplink uses it once up, CSTP stays the fallback (NCOpenConnectDTLS.swift).
 //
-// Threading: NCLwIP.queue only (the session, its NCStreams and every nc_wg_* call). Auth / framing basis: astemo6's
+// Threading: NCLwIP.queue only (the session, its NCStreams and every nc_wg_* call). Auth / framing basis: wdjiangdev's
 // PR #159 (feat/nc-openconnect).
 
 /// The OpenConnect devices by node identity. NCLwIP.queue only.

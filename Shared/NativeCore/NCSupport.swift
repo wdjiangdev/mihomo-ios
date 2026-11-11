@@ -154,7 +154,7 @@ enum NCSupport {
         let opts = proxy.fields["plugin-opts"]?.object ?? [:]
         switch plugin {
         case "obfs", "v2ray-plugin":
-            // #101 (astemo6) NCSSPluginOptions: obfs mode=http/tls; v2ray-plugin mode=websocket /
+            // #101 (wdjiangdev) NCSSPluginOptions: obfs mode=http/tls; v2ray-plugin mode=websocket /
             // http-upgrade (or empty), v2ray-http-upgrade(+fast-open) — the exact parse the dialer uses.
             guard NCSSPluginOptions(pluginName: plugin, opts: opts) == nil else { return nil }
             return plugin == "obfs"

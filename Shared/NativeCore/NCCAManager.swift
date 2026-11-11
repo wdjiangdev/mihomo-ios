@@ -146,7 +146,7 @@ public final class NCCAManager {
               let cert = SecCertificateCreateWithData(nil, certDER as CFData) else {
             return nil
         }
-        // gap C7 (astemo6/Muse NativeCore): an RSA CA — PKCS#8 with rsaEncryption (the old core's ImportP12 writes that for a
+        // gap C7 (wdjiangdev/Muse NativeCore): an RSA CA — PKCS#8 with rsaEncryption (the old core's ImportP12 writes that for a
         // p12 from another app) or a PKCS#1 "RSA PRIVATE KEY" block. Security takes the PKCS#1 RSAPrivateKey DER.
         if let pkcs1 = extractPEMContent(keyData, label: "RSA PRIVATE KEY")
             ?? extractPEMContent(keyData, label: "PRIVATE KEY").flatMap({ Self.rsaPKCS1(fromPKCS8: $0) }) {
@@ -235,7 +235,7 @@ public final class NCCAManager {
         \t\t\t<key>PayloadDisplayName</key>
         \t\t\t<string>\(escapedName)</string>
         \t\t\t<key>PayloadIdentifier</key>
-        \t\t\t<string>com.astemo6.tern.ca.\(u2_8)</string>
+        \t\t\t<string>com.wdjiangdev.tern.ca.\(u2_8)</string>
         \t\t\t<key>PayloadType</key>
         \t\t\t<string>com.apple.security.root</string>
         \t\t\t<key>PayloadUUID</key>
@@ -249,7 +249,7 @@ public final class NCCAManager {
         \t<key>PayloadDisplayName</key>
         \t<string>\(escapedName)</string>
         \t<key>PayloadIdentifier</key>
-        \t<string>com.astemo6.tern.ca-profile.\(u1_8)</string>
+        \t<string>com.wdjiangdev.tern.ca-profile.\(u1_8)</string>
         \t<key>PayloadRemovalDisallowed</key>
         \t<false/>
         \t<key>PayloadType</key>

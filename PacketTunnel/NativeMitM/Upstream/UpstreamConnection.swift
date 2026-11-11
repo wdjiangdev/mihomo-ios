@@ -16,7 +16,7 @@
 //   iOS 16 has no per-connection CONNECT proxy in Network.framework: `.unsupported` → the caller keeps the old core
 //   path for that connection (the same fallback the native front already has).
 //
-// Credit: built from astemo6's B8 draft (origin/draft/native-mitm-b7b8 6b53dc6, drafts/native-mitm/Upstream.swift):
+// Credit: built from wdjiangdev's B8 draft (origin/draft/native-mitm-b7b8 6b53dc6, drafts/native-mitm/Upstream.swift):
 // its NWConnection receive pump, injected relay endpoint and exactly-once completion are kept. Corrected here:
 // the relay only accepts CONNECT, not absolute-form requests, so the draft's "send the head with the
 // full URL" seam is replaced by CONNECT + TLS-to-origin; the draft's .waiting state was ignored (an open could

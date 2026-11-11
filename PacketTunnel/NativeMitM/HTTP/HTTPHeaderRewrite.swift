@@ -1,6 +1,6 @@
 // Native MitM stage 2, lane `http` (B8a): header op vocabulary + hop-by-hop stripping.
 //
-// Ported from astemo6's draft drafts/native-mitm/HeaderRewrite.swift (origin/draft/native-mitm-b7b8 6b53dc6), with
+// Ported from wdjiangdev's draft drafts/native-mitm/HeaderRewrite.swift (origin/draft/native-mitm-b7b8 6b53dc6), with
 // fixes:
 //   • CR/LF check: the draft used String.contains("\r"), which misses a CRLF pair ("\r\n" is ONE Character in Swift),
 //     so "a\r\nInjected: x" passed validation (response splitting). Now validated per byte (CTL / DEL rejected, HTAB ok).

@@ -4,7 +4,7 @@ import Foundation
 /// Bundle IDs / App Group are injected from project.yml through Info.plist keys,
 /// so project.yml is the only place they are configured.
 enum AppShared {
-    static let defaultAppGroup = "group.com.astemo6.tern"
+    static let defaultAppGroup = "group.com.wdjiangdev.tern"
     /// r7: Darwin notification the tunnel posts from stopTunnel (the app ends its Live Activity when it is running).
     static var tunnelStoppedNotification: String { appGroup + ".tunnelStopped" }
 
@@ -20,7 +20,7 @@ enum AppShared {
         return .main
     }
 
-    static let mainAppBundleID: String = mainAppBundle.bundleIdentifier ?? "com.astemo6.tern"
+    static let mainAppBundleID: String = mainAppBundle.bundleIdentifier ?? "com.wdjiangdev.tern"
 
     /// Tunnel extension bundle ID. Works from the main app and from any app extension: the embedded
     /// packet-tunnel appex's real id when we can read it (re-signing may change it), otherwise our own id
@@ -41,7 +41,7 @@ enum AppShared {
             }
         }
         if let own = mainAppBundle.bundleIdentifier, !own.isEmpty { return own + ".tunnel" }
-        return Bundle.main.object(forInfoDictionaryKey: "TernTunnelBundleID") as? String ?? "com.astemo6.tern.tunnel"
+        return Bundle.main.object(forInfoDictionaryKey: "TernTunnelBundleID") as? String ?? "com.wdjiangdev.tern.tunnel"
     }()
 
     /// App groups granted by the provisioning profile the IPA was (re-)signed with.
