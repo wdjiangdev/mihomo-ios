@@ -302,7 +302,7 @@ final class NCController {
         case ("GET", "/app/stats/speed"):
             respond(conn, status: 200, json: NCStatsRecorder.shared.speedJSON(
                 lastSeconds: Int(req.query["seconds"] ?? "") ?? 0, buckets: (Int(req.query["buckets"] ?? "") ?? 1) != 0))
-        // gap C4 (astemo6/Muse NativeCore): MitM request log + log history from NativeCore's own stores
+        // gap C4 (wdjiangdev/Muse NativeCore): MitM request log + log history from NativeCore's own stores
         case ("GET", "/mitm/requests"):
             respondEncodable(conn, NativeRequestLogStore.shared.summaries(since: Int64(req.query["since"] ?? "") ?? 0))
         case ("DELETE", "/mitm/requests"):

@@ -24,7 +24,7 @@
 # - extras (dispatch input `extras`): the rest of the full CI in the same run on the same build(s) —
 #   e2e (e2e-replay.yml, TernE2E products), proto (proto-loopback.yml: loopback + openconnect + masque-ip; or name
 #   jobs: loopback, openconnect, masque-ip, masque-warp), ipa (ios.yml build_only), checks (checks.yml), all = e2e,proto,ipa,checks.
-#   Full CI = astemo6: shard=full extras=e2e,ipa,checks  +  astemo666 mirror: shard=full extras=proto[,masque-warp].
+#   Full CI = wdjiangdev: shard=full extras=e2e,ipa,checks  +  astemo666 mirror: shard=full extras=proto[,masque-warp].
 #
 # Org mirror sharding (doubles concurrent macOS runners; free plan = 5 macOS jobs per account/org):
 #   wdjiangdev/mihomo-ios   → ui zh-Hans (light + dark) + unit

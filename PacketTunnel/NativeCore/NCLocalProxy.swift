@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-/// Gap D1 (feat/nc-modes, on astemo6/Muse's NativeCore): the local mixed port (Clash.Meta `mixed-port` semantics) for
+/// Gap D1 (feat/nc-modes, on wdjiangdev/Muse's NativeCore): the local mixed port (Clash.Meta `mixed-port` semantics) for
 /// 仅代理 and VPN 混合. One loopback listener on CoreOverrides.mixedPort answers, by the first byte of a connection:
 ///   - SOCKS5 (0x05): no-auth, CONNECT only (UDP ASSOCIATE / BIND answer 0x07 "command not supported");
 ///   - HTTP: `CONNECT host:port` (HTTPS tunnels — what NEProxySettings' httpsServer sends) and absolute-form plain

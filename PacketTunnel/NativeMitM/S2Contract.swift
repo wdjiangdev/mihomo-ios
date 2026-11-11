@@ -12,7 +12,7 @@
 //     (rewrite / reject / redirect / map local / scripts / body lane all stay in the old core), upstream lane carries bytes
 //     to the origin through the old relay (so rules/proxies stay in Clash.Meta), bodies the old side kept come from
 //     NativeBodyStore (B1 lane).
-// Credit: astemo6's draft origin/draft/native-mitm-b7b8 (6b53dc6) — HTTPMessage/Upstream/CertCache shapes.
+// Credit: wdjiangdev's draft origin/draft/native-mitm-b7b8 (6b53dc6) — HTTPMessage/Upstream/CertCache shapes.
 
 import Foundation
 

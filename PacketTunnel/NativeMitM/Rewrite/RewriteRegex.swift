@@ -60,7 +60,7 @@ final class RWRegex {
 
     static func isASCII(_ s: String) -> Bool { s.utf8.allSatisfy { $0 < 0x80 } }
 
-    /// Gap C5 (astemo6/Muse NativeCore): the native-only tunnel has no the old core to decide for non-ASCII input, so the ICU
+    /// Gap C5 (wdjiangdev/Muse NativeCore): the native-only tunnel has no the old core to decide for non-ASCII input, so the ICU
     /// translation runs on it too (regexp2 also matches runes; differences are limited to classes the old core spelled out
     /// as ASCII sets meeting non-ASCII text). The old-core app build keeps answering unknown.
     static let lenient = true

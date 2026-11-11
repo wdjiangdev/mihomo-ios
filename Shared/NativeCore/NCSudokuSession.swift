@@ -3,7 +3,7 @@ import CryptoKit
 
 /// Sudoku outbound session, wire-compatible with the official server (SUDOKU-ASCII/sudoku v0.5.2).
 ///
-/// Layers, client side (fix/nc-sudoku-interop; first draft by astemo6, #162):
+/// Layers, client side (fix/nc-sudoku-interop; first draft by wdjiangdev, #162):
 ///   TCP ← [legacy HTTP mask head] ← Sudoku obfuscation (NCSudokuWire) ← AEAD records ← KIP control + payload
 /// Handshake: ClientHello sealed with the directional PSK bases → ServerHello (nonce echo + X25519 pub) →
 /// both sides rekey to HKDF session bases mixed with the X25519 secret → OpenTCP → raw payload.

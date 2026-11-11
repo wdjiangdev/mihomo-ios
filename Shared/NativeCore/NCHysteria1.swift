@@ -3,7 +3,7 @@ import Network
 import os
 
 /// Hysteria v1 client (protocol version 3, Clash.Meta v1.19.33 transport/hysteria/core) over Network.framework QUIC
-/// (feat/nc-proto A3, based on astemo6/Muse NativeCore). Same QUIC group model as NCHysteria2Connection.
+/// (feat/nc-proto A3, based on wdjiangdev/Muse NativeCore). Same QUIC group model as NCHysteria2Connection.
 /// Scope: TCP over QUIC streams; UDP relay over QUIC datagrams; obfs (XPlus), protocol wechat-video and port hopping
 /// (`ports`, `hop-interval`) through the loopback packet shim (NCHysteria1UDP.swift, feat/nc-proto2). Not available:
 /// protocol faketcp (raw sockets) and Brutal congestion control (the system QUIC congestion controller is used).

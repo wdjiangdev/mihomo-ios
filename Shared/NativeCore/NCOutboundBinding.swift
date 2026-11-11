@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-/// Gap D2 (feat/nc-modes, on astemo6/Muse's NativeCore): keeps the native core's own outbound sockets off the
+/// Gap D2 (feat/nc-modes, on wdjiangdev/Muse's NativeCore): keeps the native core's own outbound sockets off the
 /// tunnel while 接管所有网络流量 (includeAllNetworks) is on.
 ///
 /// Without includeAllNetworks iOS routes a packet-tunnel provider's own sockets around its tunnel, so nothing is

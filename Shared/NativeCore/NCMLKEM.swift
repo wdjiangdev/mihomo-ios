@@ -1,6 +1,6 @@
 import Foundation
 
-// ML-KEM-768 (FIPS 203) in pure Swift for VLESS encryption (feat/nc-proto A6, based on astemo6/Muse NativeCore).
+// ML-KEM-768 (FIPS 203) in pure Swift for VLESS encryption (feat/nc-proto A6, based on wdjiangdev/Muse NativeCore).
 // Straight transcription of the FIPS 203 algorithms (KeyGen / Encaps / Decaps with implicit rejection); the
 // arithmetic uses plain Int32 reductions mod q — not constant-time beyond what the tunnel needs (keys are
 // ephemeral per connection). Memory: a handful of 256-coefficient polynomials per operation.

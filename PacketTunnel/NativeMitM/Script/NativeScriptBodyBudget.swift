@@ -1,4 +1,4 @@
-// NativeCore (feat/native-core-eval) — script body admission by ACTUAL decoded size (astemo6/Muse, 2026-10-25).
+// NativeCore (feat/native-core-eval) — script body admission by ACTUAL decoded size (wdjiangdev/Muse, 2026-10-25).
 //
 // The old-core admission estimated a body before reading it
 // (br × 8, gzip × 6) and refused it when reserve + 3 × estimate did not fit. On device (v0.19.26, 3–4 MB available

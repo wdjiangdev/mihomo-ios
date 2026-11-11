@@ -1,5 +1,5 @@
 // NativeCore (feat/native-core-eval, gap C4) — the native-only tunnel's request log and log stream
-// (astemo6/Muse NativeCore, 2026-10-25).
+// (wdjiangdev/Muse NativeCore, 2026-10-25).
 //
 // NativeRequestLogStore is the NativeRequestRecorder's sink in the native tunnel: it folds the recorder's events into entries
 // with the semantics of the retired bridge (drop / local / forward open an entry; response /

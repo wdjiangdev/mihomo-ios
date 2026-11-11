@@ -1,4 +1,4 @@
-# NativeCore: WireGuard and TUIC UDP — design note (feat/nc-proto, based on astemo6/Muse NativeCore)
+# NativeCore: WireGuard and TUIC UDP — design note (feat/nc-proto, based on wdjiangdev/Muse NativeCore)
 
 Status 2026-10-25: TUIC v5/v4 **TCP** is implemented (PacketTunnel/NativeCore/NCTUIC.swift) on Network.framework
 QUIC — no third-party QUIC library is needed for it. WireGuard and TUIC **UDP** are not implemented; this note is
