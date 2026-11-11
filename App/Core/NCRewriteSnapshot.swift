@@ -516,7 +516,13 @@ final class NCResources {
     /// cancelled and no new one starts (they used to keep a worker blocked past it); a cancelled download is not
     /// recorded as a failure, so the next prepare tries it again. The build then reads whatever is cached and fetches
     /// nothing it already saw fail.
-    func prefetch(_ paths: [String], maxConcurrent: Int = 6, deadline: TimeInterval = 15) {
+    /// `blockFor`: how long the caller waits for the workers. Downloads keep running to the
+    /// `deadline` after the caller stops waiting (they only fill the cache; a resource that
+    /// lands late is picked up by the next prepare, exactly like one that failed). The VPN
+    /// start path passes a short grace so one hanging uncached resource cannot hold the
+    /// tunnel hostage for the full fetch timeout (device diag 2026-10-28: prefetch 13.4 s of
+    /// a 14 s start, for a single URL whose 10-minute failure TTL had just expired).
+    func prefetch(_ paths: [String], maxConcurrent: Int = 6, deadline: TimeInterval = 15, blockFor: TimeInterval? = nil) {
         var seen = Set<String>()
         var todo: [String] = []
         for p in paths where Self.isRemote(p) && seen.insert(p).inserted {
@@ -548,7 +554,11 @@ final class NCResources {
                 }
             }
         }
-        _ = group.wait(timeout: end + .milliseconds(200)) // workers return right after the deadline cancels them
+        if let blockFor, blockFor < deadline {
+            _ = group.wait(timeout: DispatchTime.now() + blockFor)
+        } else {
+            _ = group.wait(timeout: end + .milliseconds(200)) // workers return right after the deadline cancels them
+        }
     }
 
     /// One URLSession per QoS band, its delegate (completion) queue at that QoS, so a thread waiting on a download
@@ -605,6 +615,42 @@ final class NCResources {
         }
         let cleanP = ("/" + path as NSString).standardizingPath
         return ((home as NSString).appendingPathComponent("engine/scripts") as NSString).appendingPathComponent(cleanP)
+    }
+
+    /// Prepare-path variant of get(): never blocks on the network. A remote path with no
+    /// cached copy throws (the caller marks that script bad for this session) and a
+    /// background fetch is kicked off so the next prepare has it — the same contract
+    /// prefetch gives rewrite resources. Device diag 2026-10-28 (build 543): the script
+    /// manifest build's serial get() calls spent 12.3 s of a 15.7 s prepare downloading
+    /// scripts one by one synchronously.
+    func getCachedOnly(path: String, maxAge: Int = 0) throws -> Data {
+        if !Self.isRemote(path) { return try get(path: path, maxAge: maxAge) }
+        lock.lock()
+        if let entry = memCache[path] {
+            lock.unlock()
+            refreshIfStale(path: path, maxAge: maxAge)
+            return entry.data
+        }
+        lock.unlock()
+        let cp = cachePath(path)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: cp),
+           let attrs = try? fm.attributesOfItem(atPath: cp),
+           let mtime = attrs[.modificationDate] as? Date,
+           let data = try? Data(contentsOf: URL(fileURLWithPath: cp)) {
+            if maxAge > 0 && Date().timeIntervalSince(mtime) > Double(maxAge) {
+                refreshIfStale(path: path, maxAge: maxAge)
+            }
+            if data.count < Self.memCacheMax {
+                lock.lock()
+                memCache[path] = (data, Date())
+                lock.unlock()
+            }
+            return data
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in _ = try? self?.fetch(path) }
+        throw NSError(domain: "NCResources", code: -3,
+                      userInfo: [NSLocalizedDescriptionKey: "脚本未缓存（已后台下载，下次启动生效）"])
     }
 
     func get(path: String, maxAge: Int = 0) throws -> Data {

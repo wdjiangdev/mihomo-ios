@@ -97,12 +97,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         TunnelErrorLog.clear()
         StartupLog.begin("startTunnel")
         NativeLogRing.install() // gap C4: /logs stream + /hark/logs history from NativeCore's own lines
+        NCStatsRecorder.shared.enableSessionArchive() // feat/session-records: closed connections archived for the whole session
         StartupLog.write("startTunnel called, \(ProcessMemory.summary())")
         // fix/vpn-stays-on: the previous tunnel's alive marker is still there = it never reached stopTunnel (jetsam /
         // crash / power off). Recorded as 上次断开原因 so 诊断 shows why the VPN was found off.
         let lastAlive = TunnelStopReason.takeUnexpectedEnd()
         if let lastAlive {
-            StartupLog.write("previous tunnel ended without stopTunnel (last alive \(ISO8601DateFormatter().string(from: lastAlive)))")
+            StartupLog.write(lastAlive.acrossUpdate
+                ? "previous tunnel ended across an app update (last alive \(ISO8601DateFormatter().string(from: lastAlive.date)))"
+                : "previous tunnel ended without stopTunnel (last alive \(ISO8601DateFormatter().string(from: lastAlive.date)))")
         }
         // feat/loon-menu-notify: started by the app / widget / shortcut (they pass this option) or by iOS (按需连接 /
         // 保持连接). A system start after a tunnel that never reached stopTunnel is an automatic reconnect.
@@ -121,7 +124,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             } else {
                 StartupLog.write("startTunnel completed OK, \(ProcessMemory.summary())")
                 TunnelStopReason.markAlive()
-                if systemReconnect && NotifyPrefs.allows(.vpn) {
+                // fix/update-end-notice: a restart caused by an App update stays silent —
+                // it is not an abnormal end and must not be announced as one.
+                if systemReconnect && lastAlive?.acrossUpdate != true && NotifyPrefs.allows(.vpn) {
                     TunnelNotice.post(kind: .vpn, title: NotifyText.loc("VPN 已自动重新连接"),
                                       body: NotifyText.loc("扩展未正常退出（被系统终止、崩溃或设备关机）"))
                 }
@@ -221,6 +226,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                         self.nativeMemGovernor = g
                     } else {
                         let guardian = MemoryGuard()
+                        guardian.trailStats = { [weak self] in self?.core.engine?.statsLine ?? "-" }
                         guardian.start()
                         self.memoryGuard = guardian
                     }
@@ -551,6 +557,10 @@ final class MemoryGuard {
     private var interval = 10
     private var lastShed = Date.distantPast
     private var lastPressureLog = Date.distantPast
+    /// fix/memory-trail: the engine's one-line counters for trail/pressure lines, wired by the provider.
+    var trailStats: (() -> String)?
+    private var lastTrailAt = Date.distantPast
+    private var lastTrailFP: UInt64 = 0
     private var lastNotice = Date.distantPast
     private var armed = true
     /// Review 6 R6A-2: set on `queue` by stop(); a tick already running must not schedule a new timer.
@@ -592,12 +602,18 @@ final class MemoryGuard {
         let fp = ProcessMemory.footprintBytes()
         if Date().timeIntervalSince(lastPressureLog) > 60 {
             lastPressureLog = Date()
-            StartupLog.write("memory pressure \(critical ? "critical" : "warning") (logged at most once a minute): \(ProcessMemory.summary())")
+            StartupLog.write("memory pressure \(critical ? "critical" : "warning") (logged at most once a minute): \(ProcessMemory.summary()); \(trailStats?() ?? "-")")
         }
         let avail = ProcessMemory.availableBytes()
         if critical || fp >= warningShedAtBytes {
             // the old core rate-limits and backs off by itself (ShedMemory), so every event may ask.
             NativeTunnelMemory.shed(level: critical ? 2 : 1, reason: critical ? "memory pressure critical" : "memory pressure warning")
+            if critical {
+                queue.asyncAfter(deadline: .now() + 5) { [weak self] in
+                    guard let self, !self.stopped else { return }
+                    StartupLog.write("memory post-shed (+5 s): \(ProcessMemory.summary()); \(self.trailStats?() ?? "-")")
+                }
+            }
         }
         evaluate(fp: fp, avail: avail, freeAt: UInt64.max, why: "memory pressure")
     }
@@ -619,6 +635,18 @@ final class MemoryGuard {
         let avail = ProcessMemory.availableBytes()
         MemorySnapshotWriter.save(fp: fp, avail: avail)
         evaluate(fp: fp, avail: avail, freeAt: freeAtBytes, why: "timer")
+        // fix/memory-trail (device 2026-10-29): a session grew 10 MB → 40 MB over an hour and was
+        // jetsam-killed; the only samples in the export were +15 s/+60 s and the final pressure line,
+        // so nothing showed WHAT grew. While the footprint is elevated, leave a throttled trail in
+        // StartupLog (kept across restarts) with the engine counters attached.
+        if fp >= 20 << 20 {
+            let now = Date()
+            if now.timeIntervalSince(lastTrailAt) >= 60 || fp >= lastTrailFP + (2 << 20) {
+                lastTrailAt = now
+                lastTrailFP = fp
+                StartupLog.write("memory trail: \(ProcessMemory.summary()); \(trailStats?() ?? "-")")
+            }
+        }
         // Sample faster while close to the limit, slowly otherwise (battery).
         let want = fp >= freeAtBytes ? 2 : 10
         if want != interval { schedule(want) }

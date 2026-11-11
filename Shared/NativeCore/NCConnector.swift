@@ -69,7 +69,7 @@ final class NCSSRelayStream: NCRelayStream {
         self.raw = raw
         self.encoder = encoder
         self.decoder = decoder
-        if let head = encoder.encode(target.atypEncoded) {
+        if let addr = target.atypEncoded, let head = encoder.encode(addr) {
             raw.send(head)
         }
     }
@@ -177,12 +177,14 @@ final class NCSnellStreamRelay: NCRelayStream {
     private let encoder: NCSnellStreamEncoder
     private let decoder: NCSnellStreamDecoder
     private let stripper = NCSnellReplyStripper()
+    private var pendingPieces: [Data] = []
 
     init(raw: NCRelayStream, psk: Data, version: Int, target: NCTarget) {
         self.raw = raw
         encoder = NCSnellStreamEncoder(psk: psk, version: version)
         decoder = NCSnellStreamDecoder(psk: psk, version: version)
-        if let wire = encoder.encode(NCSnell.connectHeader(host: target.host, port: target.port, version: version)) {
+        if let head = NCSnell.connectHeader(host: target.host, port: target.port, version: version),
+           let wire = encoder.encode(head) {
             raw.send(wire)
         }
     }
@@ -195,6 +197,20 @@ final class NCSnellStreamRelay: NCRelayStream {
     }
 
     func receive(_ handler: @escaping (Data?, Error?) -> Void) {
+        // fix/kit-snell5: same surplus-piece queueing as NCSnellV4Relay —
+        // a raw chunk can decode into several payloads; deliver one per
+        // receive() call and keep the rest instead of dropping them.
+        while !pendingPieces.isEmpty {
+            let piece = pendingPieces.removeFirst()
+            if let out = stripper.feed(piece), !out.isEmpty {
+                handler(out, nil)
+                return
+            }
+            if let failure = stripper.failure {
+                handler(nil, NSError(domain: "NativeCore", code: 4, userInfo: [NSLocalizedDescriptionKey: failure]))
+                return
+            }
+        }
         raw.receive { [weak self] data, error in
             guard let self else { handler(nil, error); return }
             guard let data else { handler(nil, error); return }
@@ -202,16 +218,7 @@ final class NCSnellStreamRelay: NCRelayStream {
                 handler(nil, NSError(domain: "NativeCore", code: 4, userInfo: [NSLocalizedDescriptionKey: "snell decode failed"]))
                 return
             }
-            for piece in pieces {
-                if let out = self.stripper.feed(piece), !out.isEmpty {
-                    handler(out, nil)
-                    return
-                }
-                if let failure = self.stripper.failure {
-                    handler(nil, NSError(domain: "NativeCore", code: 4, userInfo: [NSLocalizedDescriptionKey: failure]))
-                    return
-                }
-            }
+            self.pendingPieces.append(contentsOf: pieces)
             self.receive(handler)
         }
     }
@@ -225,12 +232,14 @@ final class NCSnellV4Relay: NCRelayStream {
     private let writer: NCSnellV4Writer
     private let reader: NCSnellV4Reader
     private let stripper = NCSnellReplyStripper()
+    private var pendingPieces: [NCSnellV4Reader.Piece] = []
 
     init(raw: NCRelayStream, psk: Data, target: NCTarget) {
         self.raw = raw
         writer = NCSnellV4Writer(psk: psk)
         reader = NCSnellV4Reader(psk: psk)
-        if let wire = writer.write(NCSnell.connectHeader(host: target.host, port: target.port, version: 4)) {
+        if let head = NCSnell.connectHeader(host: target.host, port: target.port, version: 4),
+           let wire = writer.write(head) {
             raw.send(wire)
         }
     }
@@ -243,6 +252,30 @@ final class NCSnellV4Relay: NCRelayStream {
     }
 
     func receive(_ handler: @escaping (Data?, Error?) -> Void) {
+        // fix/kit-snell5: one raw chunk routinely decodes into several v4
+        // frames — servers coalesce frames into a single TCP segment (the
+        // sing-box / official v5 frame-size ramp does exactly that). The old
+        // loop delivered the first piece and silently dropped the rest of
+        // the feed, stalling the stream after ~one frame. Queue surplus
+        // pieces and drain them on later receive() calls before pulling
+        // more from the raw stream.
+        while !pendingPieces.isEmpty {
+            let piece = pendingPieces.removeFirst()
+            switch piece {
+            case .end:
+                handler(nil, nil)
+                return
+            case .data(let plain):
+                if let out = stripper.feed(plain), !out.isEmpty {
+                    handler(out, nil)
+                    return
+                }
+                if let failure = stripper.failure {
+                    handler(nil, NSError(domain: "NativeCore", code: 4, userInfo: [NSLocalizedDescriptionKey: failure]))
+                    return
+                }
+            }
+        }
         raw.receive { [weak self] data, error in
             guard let self else { handler(nil, error); return }
             guard let data else { handler(nil, error); return }
@@ -250,22 +283,7 @@ final class NCSnellV4Relay: NCRelayStream {
                 handler(nil, NSError(domain: "NativeCore", code: 4, userInfo: [NSLocalizedDescriptionKey: "snell v4 decode failed"]))
                 return
             }
-            for piece in pieces {
-                switch piece {
-                case .end:
-                    handler(nil, nil)
-                    return
-                case .data(let plain):
-                    if let out = self.stripper.feed(plain), !out.isEmpty {
-                        handler(out, nil)
-                        return
-                    }
-                    if let failure = self.stripper.failure {
-                        handler(nil, NSError(domain: "NativeCore", code: 4, userInfo: [NSLocalizedDescriptionKey: failure]))
-                        return
-                    }
-                }
-            }
+            self.pendingPieces.append(contentsOf: pieces)
             self.receive(handler)
         }
     }
@@ -304,10 +322,55 @@ enum NCConnector {
 
     /// Opens a relay stream to `target` through the resolved outbound.
     /// Completion fires on `queue` exactly once.
+    /// fix/nc-dial-gate: proxied resolutions share the MitM upstream's per-node dial gate and
+    /// its one transient retry — a CDN edge refusing a burst of ws upgrades (HTTP 403)
+    /// otherwise kills whole app launches on the plain TUN path, which was never gated
+    /// (device diag 2026-10-28: www.google.com / clients3 / oauthaccountmanager died during a
+    /// YouTube launch while gated MitM-upstream flows went through).
     static func connect(target: NCTarget,
                         resolution: NCGroupEngine.Resolution,
                         queue: DispatchQueue,
                         completion: @escaping (NCRelayStream?, Error?) -> Void) {
+        switch resolution {
+        case .proxy(let proxy):
+            gatedConnect(key: proxy.name, queue: queue, retry: true, { done in
+                connectViaProxy(target: target, proxy: proxy, queue: queue, completion: done)
+            }, completion: completion)
+        case .chain(let proxies):
+            gatedConnect(key: proxies.first?.name ?? "chain", queue: queue, retry: true, { done in
+                connectChain(target: target, proxies: proxies, queue: queue, completion: done)
+            }, completion: completion)
+        default:
+            connectUnpaced(target: target, resolution: resolution, queue: queue, completion: completion)
+        }
+    }
+
+    /// One gated attempt: acquire a per-node slot, run `body`, release, and on a transient
+    /// failure retry the whole attempt once after a short jittered pause (outside the slot).
+    private static func gatedConnect(key: String, queue: DispatchQueue, retry: Bool,
+                                     _ body: @escaping (@escaping (NCRelayStream?, Error?) -> Void) -> Void,
+                                     completion: @escaping (NCRelayStream?, Error?) -> Void) {
+        NCDialGate.sharedNodeGate.acquire(key) {
+            body { relay, err in
+                NCDialGate.sharedNodeGate.release(key)
+                if retry, relay == nil, let err, NCUpstreamRetry.isTransient(err) {
+                    queue.asyncAfter(deadline: .now() + 0.4 + Double.random(in: 0...0.4)) {
+                        gatedConnect(key: key, queue: queue, retry: false, body, completion: completion)
+                    }
+                    return
+                }
+                completion(relay, err)
+            }
+        }
+    }
+
+    /// The ungated resolution entry. Callers that already pace and retry their dials
+    /// (NCUpstreamConnector.gatedDial) use this — acquiring the shared gate twice on the
+    /// same key would deadlock a burst.
+    static func connectUnpaced(target: NCTarget,
+                               resolution: NCGroupEngine.Resolution,
+                               queue: DispatchQueue,
+                               completion: @escaping (NCRelayStream?, Error?) -> Void) {
         switch resolution {
         case .direct:
             let s = NCStream(to: target.host, port: target.port, queue: queue)
@@ -460,6 +523,37 @@ enum NCConnector {
         }
         switch proxy.type {
         case "socks5":
+            // feat/nc-socks5-tls (#168): `tls: true` (Surge `socks5-tls`, Clash
+            // `type: socks5` + `tls: true`, QX `over-tls=true`) must dial TLS
+            // before the SOCKS5 handshake — the plaintext stream below was the
+            // bug: the editor/import layers honoured the flag, the dialer did not.
+            if proxyUsesTLS(proxy) {
+                if transport != nil {
+                    queue.async { completion(nil, Failure.unsupported("socks5 over TLS over a chain transport")) }
+                    return
+                }
+                if isECHEnabled(proxy) && realityParams(proxy) != nil {
+                    queue.async { completion(nil, Failure.handshake("REALITY 与 ECH 互斥，不能同时启用")) }
+                    return
+                }
+                let sni = httpProxySNI(proxy, server: server)
+                if needsNativeTLS(proxy) {
+                    dialNativeTLS(proxy: proxy, server: server, port: port, serverName: sni, defaultALPN: [], queue: queue) { raw, err in
+                        guard let raw else { completion(nil, err); return }
+                        socksHandshake(raw: raw, target: target, proxy: proxy, queue: queue, completion: completion)
+                    }
+                    return
+                }
+                let raw = NCStream(to: server, port: port,
+                                   tlsServerName: sni,
+                                   allowInsecure: proxy.skipCertVerify,
+                                   alpn: parseALPN(proxy) ?? [], queue: queue)
+                raw.start { err in
+                    guard err == nil else { completion(nil, err); return }
+                    socksHandshake(raw: raw, target: target, proxy: proxy, queue: queue, completion: completion)
+                }
+                return
+            }
             obtainStream(transport: transport, make: { NCStream(to: server, port: port, queue: queue) }) { raw, err in
                 guard let raw else { completion(nil, err); return }
                 socksHandshake(raw: raw, target: target, proxy: proxy, queue: queue, completion: completion)
@@ -629,7 +723,10 @@ enum NCConnector {
                     guard let base else { completion(nil, err); return }
                     xhttpStream(raw: base, proxy: proxy, queue: queue) { x, xerr in
                         guard let x else { completion(nil, xerr); return }
-                        x.send(NCTrojan.requestHead(password: password, target: target))
+                        guard let head = NCTrojan.requestHead(password: password, target: target) else {
+                            completion(nil, Failure.handshake("trojan target cannot be encoded")); return
+                        }
+                        x.send(head)
                         completion(x, nil)
                     }
                 }
@@ -655,7 +752,10 @@ enum NCConnector {
                 // fix/nc-silent-fail: trojan-go ws / trojan-grpc / h2 — the transport carries the Trojan head.
                 trojanTransportBase(proxy: proxy, server: server, port: port, queue: queue) { base, err in
                     guard let base else { completion(nil, err); return }
-                    base.send(NCTrojan.requestHead(password: password, target: target))
+                    guard let head = NCTrojan.requestHead(password: password, target: target) else {
+                        completion(nil, Failure.handshake("trojan target cannot be encoded")); return
+                    }
+                    base.send(head)
                     completion(base, nil)
                 }
                 return
@@ -663,7 +763,10 @@ enum NCConnector {
             if realityParams(proxy) != nil {
                 dialReality(proxy: proxy, server: server, port: port, queue: queue) { base, err in
                     guard let base else { completion(nil, err); return }
-                    base.send(NCTrojan.requestHead(password: password, target: target))
+                    guard let head = NCTrojan.requestHead(password: password, target: target) else {
+                        completion(nil, Failure.handshake("trojan target cannot be encoded")); return
+                    }
+                    base.send(head)
                     completion(base, nil)
                 }
                 return
@@ -672,7 +775,10 @@ enum NCConnector {
             if needsNativeTLS(proxy) {
                 dialNativeTLS(proxy: proxy, server: server, port: port, serverName: trojanSNI, queue: queue) { base, err in
                     guard let base else { completion(nil, err); return }
-                    base.send(NCTrojan.requestHead(password: password, target: target))
+                    guard let head = NCTrojan.requestHead(password: password, target: target) else {
+                        completion(nil, Failure.handshake("trojan target cannot be encoded")); return
+                    }
+                    base.send(head)
                     completion(base, nil)
                 }
                 return
@@ -683,7 +789,10 @@ enum NCConnector {
                                queue: queue)
             raw.start { err in
                 guard err == nil else { completion(nil, err); return }
-                raw.send(NCTrojan.requestHead(password: password, target: target))
+                guard let head = NCTrojan.requestHead(password: password, target: target) else {
+                    completion(nil, Failure.handshake("trojan target cannot be encoded")); return
+                }
+                raw.send(head)
                 completion(raw, nil)
             }
         case "vless":
@@ -722,9 +831,12 @@ enum NCConnector {
                     }
                     if visionFlow(proxy), let tlsClient = base0 as? NCTLSClientStream,
                        let uuidBytes = NCVLESS.uuidBytes(uuid) {
+                        // The request head travels UNFRAMED (a vision server parses it before
+                        // unframing the body); only the payload is vision-framed. The response
+                        // head is stripped inside NCVisionStream, so no relay wrapper here.
+                        tlsClient.send(head)
                         let vision = NCVisionStream(tls: tlsClient, uuid: uuidBytes)
-                        vision.send(head)
-                        completion(NCVLESSRelayStream(raw: vision), nil)
+                        completion(vision, nil)
                         return
                     }
                     transportStream(raw: base0, proxy: proxy, server: server, queue: queue) { base, terr in
@@ -816,9 +928,9 @@ enum NCConnector {
                     let tls = NCTLSClientStream(raw: raw, config: config, queue: queue)
                     tls.startHandshake { herr in
                         guard herr == nil else { completion(nil, herr); return }
+                        tls.send(head) // unframed, like every vision site (see the REALITY one)
                         let vision = NCVisionStream(tls: tls, uuid: uuidBytes)
-                        vision.send(head)
-                        completion(NCVLESSRelayStream(raw: vision), nil)
+                        completion(vision, nil)
                     }
                     return
                 }
@@ -927,7 +1039,7 @@ enum NCConnector {
         }
     }
 
-    private static func sudokuStream(proxy: NCProxy, target: NCTarget, transport: NCRelayStream?,
+    private static func sudokuStream(proxy: NCProxy, target: NCTarget, uot: Bool = false, transport: NCRelayStream?,
                                      queue: DispatchQueue, completion: @escaping (NCRelayStream?, Error?) -> Void) {
         guard let server = proxy.server, let port = proxy.port else {
             queue.async { completion(nil, Failure.handshake("sudoku missing server or port")) }
@@ -935,8 +1047,28 @@ enum NCConnector {
         }
         obtainStream(transport: transport, make: { NCStream(to: server, port: port, queue: queue) }) { raw, err in
             guard let raw else { completion(nil, err); return }
-            NCSudokuSession.connect(raw: raw, proxy: proxy, target: target, queue: queue, completion: completion)
+            NCSudokuSession.connect(raw: raw, proxy: proxy, target: target, uot: uot, queue: queue,
+                                    completion: completion)
         }
+    }
+
+    /// feat/nc-sudoku-udp: a Sudoku tunnel opened with KIP StartUoT — the official UDP path (UoT inside the
+    /// tunnel, one tunnel per UDP association like the official client and Clash.Meta). The
+    /// stream carries NCSudokuUoT frames; NCSudokuUDPSession drives it. Completion fires on `queue`.
+    static func sudokuUoTStream(proxy: NCProxy, queue: DispatchQueue, transport: NCRelayStream? = nil,
+                                completion: @escaping (NCRelayStream?, Error?) -> Void) {
+        if let why = NCSupport.sudokuUnsupported(proxy) {
+            queue.async { completion(nil, Failure.unsupported(why)) }
+            return
+        }
+        // feat/nc-sudoku-udp-wire: a chained transport (dialer-proxy) cannot carry the UoT
+        // tunnel yet — fail loudly instead of silently dialing direct.
+        if transport != nil {
+            queue.async { completion(nil, Failure.unsupported("Sudoku UDP 暂不支持代理链")) }
+            return
+        }
+        sudokuStream(proxy: proxy, target: NCTarget(host: "0.0.0.0", port: 0), uot: true, transport: transport,
+                     queue: queue, completion: completion)
     }
 
     /// VLESS encryption handshake over `base`, then XTLS Vision on top of the encryption conn (feat/nc-proto3).
@@ -949,9 +1081,9 @@ enum NCConnector {
         let enc = NCVLESSEncStream(raw: base, inst: inst, queue: queue)
         enc.handshake { err in
             if let err { completion(nil, err); return }
+            enc.send(head) // unframed, like every vision site (see the REALITY one)
             let vision = NCVisionStream(tls: enc, uuid: uuidBytes)
-            vision.send(head)
-            completion(NCVLESSRelayStream(raw: vision), nil)
+            completion(vision, nil)
         }
     }
 
@@ -1159,6 +1291,16 @@ enum NCConnector {
             if let v = proxy.fields[k]?.string, !v.isEmpty { return v }
         }
         return server
+    }
+
+    /// feat/nc-socks5-tls (#168): `httpProxyUsesTLS` generalised to the other
+    /// plain-TCP proxy type that carries a `tls` flag — socks5 (Surge
+    /// `socks5-tls`, Clash `type: socks5` + `tls: true`, QX `over-tls=true`
+    /// all normalise to `type: socks5` + `tls: true` at import). The SNI
+    /// priority is the same list, so the socks5 dial reuses `httpProxySNI`.
+    static func proxyUsesTLS(_ proxy: NCProxy) -> Bool {
+        if httpProxyUsesTLS(proxy) { return true }
+        return proxy.type == "socks5" && (proxy.fields["tls"].flatMap(NCProxy.truthy) ?? false)
     }
 
     /// Whether this proxy requires the native TLS stack (NCTLSClient).
@@ -1744,9 +1886,12 @@ enum NCConnector {
             let option: UInt8 = security == NCVMess.securityNone ? 0
                 : NCVMess.optionChunkStream | NCVMess.optionChunkMasking
             let paddingCount = Int(randomData(1)[0]) % 16
-            let plain = NCVMess.plainHeader(reqNonce: reqNonce, reqKey: reqKey, respV: respV,
-                                            option: option, security: security,
-                                            padding: randomData(paddingCount), target: target)
+            guard let plain = NCVMess.plainHeader(reqNonce: reqNonce, reqKey: reqKey, respV: respV,
+                                                  option: option, security: security,
+                                                  padding: randomData(paddingCount), target: target) else {
+                completion(nil, Failure.handshake("vmess target cannot be encoded"))
+                return
+            }
             let sealed = NCVMess.sealHeader(cmdKey: NCVMess.cmdKey(uuidBytes: uuidBytes),
                                             plainHeader: plain,
                                             time: Int64(Date().timeIntervalSince1970),
@@ -1810,7 +1955,11 @@ enum NCConnector {
 
     private static func socksRequest(raw: NCRelayStream, target: NCTarget, buf: NCByteBuffer,
                                      completion: @escaping (NCRelayStream?, Error?) -> Void) {
-        raw.send(NCSOCKS5.connectRequest(target: target))
+        guard let req = NCSOCKS5.connectRequest(target: target) else {
+            completion(nil, Failure.handshake("socks target cannot be encoded"))
+            return
+        }
+        raw.send(req)
         func step() {
             if NCSOCKS5.isMalformedResponse(buf.data) { completion(nil, Failure.handshake("socks bad reply")); return }
             if let (need, rep) = NCSOCKS5.parseResponse(buf.data) {

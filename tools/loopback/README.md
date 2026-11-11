@@ -45,6 +45,7 @@ the repo. Environment overrides: `SING_BOX_VERSION` (default `1.12.24`),
 | 18006 | sing-box Hysteria2 inbound — `nc-loop-hy2-pw`, TLS ALPN h3 |
 | 18007 | sing-box TUIC inbound — same uuid / `nc-loop-tuic-pw`, ALPN h3, BBR |
 | 18008 | sing-box WireGuard endpoint (UDP) — test keypair, see config |
+| 18071 | sing-box WireGuard endpoint (UDP, own instance, `wg-sing-box-config.json`) — kit-shaped test keypair for `E2ETests/NCWireGuardLoopbackTests` (job `wireguard`) |
 | 18014 | sing-box VLESS inbound with ECH — same uuid, TLS + ECH (`outer.localhost` / `localhost`) |
 | 18015 | sing-box Trojan inbound with ECH — `nc-loop-trojan-pw`, TLS + ECH (`outer.localhost` / `localhost`) |
 | 18016 | `lua-mock-server.py` — Lua backend peer: `HE`→`HO` greeting, then XOR-0x5A relay to 18080 (fix/nc-proto-lua-int) |
@@ -62,6 +63,11 @@ the repo. Environment overrides: `SING_BOX_VERSION` (default `1.12.24`),
 | 18081 | `echo_server.py` UDP echo |
 | 18082 | `echo_server.py` TCP blackhole (accepts, reads nothing while paused) |
 | 18083 | `echo_server.py` UDP control: datagram `go` → blackhole discards; `pause` → holds again |
+| 18084 | `echo_server.py` UDP DNS: every query → one A answer 192.0.2.53 (DNS-over-UDP through Sudoku UoT) |
+| 18066 | sing-box **1.15.0-alpha.13** Snell inbound, version 5 — `nc-loop-snell-psk` (separate binary/config `snell-sing-box-config.json`; sing-box only gained a Snell inbound in 1.15, built on sing-snell's model of the official snell-server v5.0.1; fix/kit-snell5) |
+| 18070 | sing-box (fleet 1.12.24) VLESS + REALITY inbound — separate instance/config `reality-sing-box-config.json`; kit-shaped parameters: short-id `21dde3c3112bbc4b`, vision + plain users, loopback-local keypair; handshake dest/SNI `www.apple.com` (NOT the kit's `www.microsoft.com`: its 8273-byte Certificate message exceeds the REALITY server's 8192-byte patch window and breaks every client — see the test-file comment) (fix/kit-reality) |
+| 18019 | `echo_server.py` SOCKS5 over TLS (minimal SOCKS5 behind the loopback cert; feat/nc-socks5-tls) |
+| 18020 | `echo_server.py` plain SOCKS5 (no-auth / `nc-loop-socks-user` + `nc-loop-socks-pw`) |
 | 18090 | official Sudoku server v0.5.2.0 (`sudoku/entropy.json`) — prefer_entropy, chacha20-poly1305, legacy HTTP mask, pure downlink; fallback → 18080 |
 | 18091 | official Sudoku server (`sudoku/ascii-packed.json`) — prefer_ascii, aes-128-gcm, no HTTP mask, packed downlink |
 | 18092 | official Sudoku server (`sudoku/directional-none.json`) — up_ascii_down_entropy, custom table `xpxvvpvv`, aead none |
@@ -121,9 +127,19 @@ These materials are strictly for loopback testing with self-signed TLS certifica
 - **MASQUE**: RFC 9298 CONNECT-UDP echo against `masque-proxy` on port 18012
 - **MASQUE CONNECT-IP** (job `masque-ip`, E2ETests/NCMASQUEIPLoopbackTests): real RFC 9484 proxy in a QEMU VM; through the tunnel 10.89.1.1 TCP echo :9000 (1 MiB byte-exact), UDP echo :9001, DNS :53 (*.mq.test), HTTP :8080
   (QUIC / HTTP/3 Datagrams targeting UDP echo `:18081`).
-- **WireGuard**: server endpoint stands up, but there is no client test —
-  NativeCore's WireGuard dialer only exists inside the tunnel (userspace
-  lwIP stack), `NCConnector` reports it unsupported in the app/test bundle.
+- **WireGuard** (job `wireguard`, E2ETests/NCWireGuardLoopbackTests): the
+  production dialer + lwIP netif against a dedicated sing-box WireGuard
+  endpoint (:18071, `wg-sing-box-config.json`, own instance with a recorded
+  test keypair; kit-shaped parameters — client 10.66.0.2, MTU 1280, no PSK).
+  TCP echo to the fleet echo server, byte-exact — but at the runner's primary
+  IPv4 (`TEST_RUNNER_NC_WG_ECHO_HOST`, and the echo socket binds 0.0.0.0), not
+  127.0.0.1: the endpoint's gVisor netstack drops inner packets with a loopback
+  destination as martian before the router can dial them out, so a loopback
+  target is never answered even though the handshake completes
+  (fix/kit-wireguard phase 2). The class lives in
+  TernE2ETunnelTests because the dialer/netif are PacketTunnel code — the
+  app-hosted bundle cannot link them. (The :18008 endpoint in the main
+  fleet config predates this test; its client private key is not recorded.)
 - **OpenConnect**: not sing-box — a real ocserv in an Alpine VM under QEMU
   (`ocserv/start-ocserv-vm.sh`, cloud-init `ocserv/user-data`; TCP 443 →
   127.0.0.1:18443), job `openconnect` in proto-loopback.yml, test class
@@ -132,6 +148,21 @@ These materials are strictly for loopback testing with self-signed TLS certifica
   :9001, dnsmasq :53 (`*.oc.test` → 10.77.0.1), busybox httpd :8080.
 - **Mieru**: sing-box has no mieru inbound, so there is no reference server;
   not covered rather than faked.
+- **Snell**: TCP echo against the sing-box 1.15 Snell **v5** inbound (:18066),
+  with the node declared both version 5 and version 4 (the v5 wire is the v4
+  wire; the kit's official snell-server v5.0.1 accepts the same stream).
+  Snell UDP rides `NCUDPSnellSession` in the PacketTunnel target, which the
+  app-hosted test bundle cannot link — same limitation as WireGuard, so UDP
+  is not covered here.
+- **VLESS-Reality**: TCP echo against the fleet sing-box REALITY inbound
+  (:18070) with the zhiheng kit's parameter shape (8-byte short-id), as
+  vision and plain users — but with handshake dest `www.apple.com`, not
+  the kit's `www.microsoft.com`: microsoft's Certificate message is
+  8273 bytes, over the REALITY server's 8192-byte patch window, which
+  aborts the handshake for every client (diagnosed on fix/kit-reality;
+  the kit node has the same defect server-side). The handshake dest is
+  a live public site, so this pair needs runner egress to
+  `www.apple.com:443`.
 
 The constants in this table, `sing-box-config.json` and
 `UnitTests/NativeCoreLoopbackTests.swift` are three copies of one truth —

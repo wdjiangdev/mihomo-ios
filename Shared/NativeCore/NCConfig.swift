@@ -65,6 +65,16 @@ struct NCProxy: Equatable {
     var uuid: String? { fields["uuid"]?.string }
     var udp: Bool { fields["udp"]?.bool ?? false }
 
+    /// feat/nc-sudoku-udp-wire: the UDP capability every consumer must agree on — the data
+    /// plane (whether a UDP session is opened at all), the controller's /proxies payload and
+    /// the strategy-page badge derived from it. An explicit `udp` field always wins; without
+    /// one, Sudoku defaults to true (the reference implementation's Sudoku outbound always
+    /// offers UDP — UoT inside the tunnel), every other type keeps the historical false.
+    var effectiveUDP: Bool {
+        if let v = fields["udp"]?.bool { return v }
+        return type == "sudoku"
+    }
+
     /// Structured ECH options (`ech-opts`), aligned with Clash.Meta's ECHOptions.
     var echOpts: NCECHOpts? {
         if let obj = fields["ech-opts"]?.object {
@@ -122,6 +132,11 @@ struct NCConfig: Equatable {
     var rules: [String]
     var dns: NCDNSConfig
     var sniffer: NCSnifferConfig = NCSnifferConfig(fields: [:])
+    /// fix/httpdns-guard: CoreOverrides.httpdnsGuard, baked by the runtime
+    /// builder as the top-level `httpdns-guard` bool. Defaulted (here and in
+    /// decode) so configs built before the key existed keep the guard ON —
+    /// the override's factory default.
+    var httpdnsGuard: Bool = true
     var raw: [String: NCJSONValue]
     /// Named sub-rule sets (`sub-rules:` in the source config), parsed.
     /// Only the Clash.Meta-YAML path carries them; other construction sites
@@ -168,6 +183,7 @@ struct NCConfig: Equatable {
             rules: rules,
             dns: dns,
             sniffer: NCSnifferConfig(fields: root["sniffer"]?.object ?? [:]),
+            httpdnsGuard: root["httpdns-guard"]?.bool ?? true,
             raw: root,
             subRules: subRules)
     }

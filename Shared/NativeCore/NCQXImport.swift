@@ -258,6 +258,8 @@ enum NCQXImport {
             if let u = take("username") { fields["username"] = .string(u) }
             if let p = take("password") { fields["password"] = .string(p) }
             if let ot = take("over-tls"), NCConfImport.boolValue(ot) == true { fields["tls"] = .bool(true) }
+            // feat/nc-socks5-tls (#168): QX spells the TLS server name `tls-host`.
+            if let s = take("tls-host") ?? take("tls-name") ?? take("sni") { fields["sni"] = .string(s) }
         case "snell":
             if let p = take("psk") ?? take("password") { fields["password"] = .string(p) }
             if let v = take("version"), let n = Int(v) { fields["version"] = .number(Double(n)) }
@@ -575,7 +577,11 @@ enum NCQXImport {
         case "network": mapped = "NETWORK"
         default: mapped = type.uppercased() // best-effort pass-through for newer QX types
         }
-        var s = "\(mapped),\(t[1]),\(canonicalPolicy(t[2]))"
+        // GEOIP country codes are canonical uppercase in the internal profile (every other
+        // importer and TernConf's parser agree); QX sources often write them lowercase
+        // (`geoip, cn, direct`), which would otherwise break the .conf round trip.
+        let payload = mapped == "GEOIP" ? t[1].uppercased() : t[1]
+        var s = "\(mapped),\(payload),\(canonicalPolicy(t[2]))"
         if t.count > 3 { s += "," + t.dropFirst(3).joined(separator: ",") }
         return s
     }

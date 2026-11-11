@@ -219,6 +219,16 @@ struct CoreOverrides: Codable, Equatable {
     var allowLan: Bool = false
     var dnsMode: String = "fake-ip"
     var sniffer: Bool = true
+    /// HTTPDNS 守卫 (fix/httpdns-guard): the engine resolves the well-known
+    /// HTTPDNS service domains (httpdns.baidu.com 等) itself and rejects
+    /// connections to their IPs. Apps that resolve through their own
+    /// HTTPDNS bypass the user's DNS policy entirely — no query for the
+    /// DNS layer to reject, no SNI for the sniffer — so the service
+    /// endpoint is the only place the policy can bite; losing it just
+    /// pushes the app back to system DNS. The watched names are pure
+    /// resolution services and the apps' content servers do not live
+    /// behind those IPs, so the guard is on by default.
+    var httpdnsGuard: Bool = true
     var controllerPort: Int = 9090
     var secret: String = ""
     var mode: String = "rule"
@@ -409,7 +419,7 @@ struct CoreOverrides: Codable, Equatable {
     init() {}
 
     enum CodingKeys: String, CodingKey {
-        case logLevel, ipv6, allowLan, dnsMode, sniffer, controllerPort, secret, mode, memoryLimitMB
+        case logLevel, ipv6, allowLan, dnsMode, sniffer, httpdnsGuard, controllerPort, secret, mode, memoryLimitMB
         case tunnelMode, mixedPort, tunMTU, geoMirror, geoMirrorBase, geoURLs, geoAutoUpdateDays, mergeManual, safeMode
         case testURL, testTimeoutMs, overrideHealthCheck
         case includedRoutes, excludedRoutes, skipProxy, blockQUIC
@@ -432,6 +442,7 @@ struct CoreOverrides: Codable, Equatable {
         allowLan = get(.allowLan, d.allowLan)
         dnsMode = get(.dnsMode, d.dnsMode)
         sniffer = get(.sniffer, d.sniffer)
+        httpdnsGuard = get(.httpdnsGuard, d.httpdnsGuard)
         controllerPort = get(.controllerPort, d.controllerPort)
         secret = get(.secret, d.secret)
         mode = get(.mode, d.mode)
@@ -801,6 +812,25 @@ enum TunnelStopReason {
     /// extension at its memory limit, a crash, or the device powered off). Found by the next start through the alive marker.
     static let endedBySystem = -1
 
+    /// NEProviderStopReason.appUpdate: the extension was replaced by an App update. stopTunnel
+    /// is not always called in that case (the binary is swapped under the running extension),
+    /// so an update kill can also surface through the alive marker — told apart from a real
+    /// abnormal end by the build stamped into the marker (fix/update-end-notice, user
+    /// 2026-10-29: an update-caused restart must not be reported as 异常退出).
+    static let appUpdate = 16
+
+    /// The running bundle's build number (app and tunnel share it).
+    static var currentBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+    }
+
+    /// An end across an App update: the marker was written by a DIFFERENT build than the one
+    /// starting now. Legacy markers carry no build and never classify as an update.
+    static func isUpdateEnd(markerBuild: String?, currentBuild: String) -> Bool {
+        guard let markerBuild, !markerBuild.isEmpty, markerBuild != "?" else { return false }
+        return markerBuild != currentBuild
+    }
+
     static func describe(_ raw: Int) -> String {
         switch raw {
         case endedBySystem: return String(localized: "扩展未正常退出（被系统终止、崩溃或设备关机）")
@@ -838,20 +868,33 @@ enum TunnelStopReason {
     static var aliveURL: URL { AppShared.containerURL.appendingPathComponent("tunnel-alive.txt") }
 
     static func markAlive(_ date: Date = Date()) {
-        try? ISO8601DateFormatter().string(from: date).data(using: .utf8)?.write(to: aliveURL, options: .atomic)
+        // fix/update-end-notice: the heartbeat also stamps the build that wrote it, so the
+        // next start can tell an update kill (different build) from an abnormal end.
+        let line = "\(ISO8601DateFormatter().string(from: date))\t\(currentBuild)"
+        try? line.data(using: .utf8)?.write(to: aliveURL, options: .atomic)
+    }
+
+    /// Marker text → heartbeat + the build that wrote it (nil for pre-stamp markers).
+    static func parseAlive(_ s: String) -> (date: Date, build: String?)? {
+        let parts = s.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\t", maxSplits: 1).map(String.init)
+        guard let first = parts.first, let d = ISO8601DateFormatter().date(from: first) else { return nil }
+        return (d, parts.count > 1 ? parts[1] : nil)
     }
 
     static func clearAlive() { try? FileManager.default.removeItem(at: aliveURL) }
 
     /// The last heartbeat of a tunnel that ended without stopTunnel (and records it as the last stop), or nil.
+    /// An end across an App update records 「App 更新」 instead of the abnormal-end reason.
     /// Clears the marker either way.
     @discardableResult
-    static func takeUnexpectedEnd() -> Date? {
+    static func takeUnexpectedEnd() -> (date: Date, acrossUpdate: Bool)? {
         guard let s = try? String(contentsOf: aliveURL, encoding: .utf8) else { return nil }
         clearAlive()
-        let when = ISO8601DateFormatter().date(from: s.trimmingCharacters(in: .whitespacesAndNewlines)) ?? Date()
-        record(endedBySystem, at: when)
-        return when
+        let parsed = parseAlive(s)
+        let when = parsed?.date ?? Date()
+        let across = isUpdateEnd(markerBuild: parsed?.build, currentBuild: currentBuild)
+        record(across ? appUpdate : endedBySystem, at: when)
+        return (when, across)
     }
 
     /// "原因（时间）" of the last stop, or nil.

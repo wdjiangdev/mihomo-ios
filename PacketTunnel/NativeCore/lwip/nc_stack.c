@@ -66,7 +66,12 @@ u32_t sys_now(void) {
    destinations; it must not exceed lwIP's listen-PCB pool or tcp_listen fails before the table ever evicts. */
 #define NC_MAX_LISTENERS 24
 #define NC_MAX_UDP_SESSIONS 64
-#define NC_MAX_TCP_CONNS 96
+/* fix/nc-stack-pool-capacity: 96 → 288. At 96 the accept callback aborted
+   burst connections outright (conn_full fired 14–23× in 12–15 s clean
+   single-app device sessions, 2460× in a full-config session): apps whose
+   connect() is aborted mid-burst show dead content while neighbours survive.
+   288 + 24 listeners stays under MEMP_NUM_TCP_PCB (384) with TIME_WAIT room. */
+#define NC_MAX_TCP_CONNS 288
 #define NC_UDP_IDLE_MS (120 * 1000)
 #define NC_LISTENER_IDLE_MS (300 * 1000)
 
@@ -618,10 +623,24 @@ int nc_tcp_write(void *conn, const uint8_t *data, uint32_t len) {
   if (!c || !c->used || !c->pcb) return -1;
   u32_t off = 0;
   while (off < len) {
-    u16_t chunk = (u16_t)((len - off) > 0xffff ? 0xffff : (len - off));
-    err_t e = tcp_write(c->pcb, data + off, chunk, TCP_WRITE_FLAG_COPY);
+    /* lwIP's tcp_write is all-or-nothing against the send buffer (TCP_SND_BUF,
+       16 * MSS = 23360 B): a call larger than the free space returns ERR_MEM and
+       queues NOTHING. Chunking by the u16 API limit (0xffff), as this used to do,
+       made every write over ~23 KB a guaranteed no-op — and the engine's drain
+       passes whole relay reads (up to 64 KB) as single writes, so any flow whose
+       relay ever delivered a >23 KB chunk wedged for good: the response sat in
+       the outbox, no tcp_sent could ever fire for it, and the tick retried the
+       same oversized head until the app gave up (device builds 545-547: XHS /
+       YouTube content flows stalling after the first burst, Ximalaya audio
+       pausing once the player buffer drained). Size each chunk by the space
+       actually free; a partial result just means "retry after tcp_sent". */
+    u16_t avail = tcp_sndbuf(c->pcb);
+    if (avail == 0) break;
+    u32_t want = len - off;
+    if (want > avail) want = avail;
+    err_t e = tcp_write(c->pcb, data + off, (u16_t)want, TCP_WRITE_FLAG_COPY);
     if (e != ERR_OK) break;
-    off += chunk;
+    off += (u16_t)want;
   }
   if (off > 0) tcp_output(c->pcb);
   return (int)off;

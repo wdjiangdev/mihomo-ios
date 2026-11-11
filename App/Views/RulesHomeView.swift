@@ -154,12 +154,19 @@ struct RulesView: View {
         if let sets, let id = profiles.activeID {
             providerOV.update(id, ProviderOverride.ruleOrderKey) { $0.order = sets }
         }
+        // feat/profile-write-back: a new rule-set order is written into the profile file (a subscription
+        // switches to its local copy, which already reloads) instead of staying an override.
+        var switched = false
+        if sets != nil, let o = await ProfileWriteBack.materializeActive() {
+            switched = o.switched
+            if let n = o.note { custom.message = n }
+        }
         var err: String?
         if let mine {
             err = await custom.setRemoteOrder(mine) // saves + reloads (the rule-set order rides along)
             await load()
         } else {
-            if vpn.isConnected, let e = await VPNManager.shared.reload(hot: true) { err = e }
+            if !switched, vpn.isConnected, let e = await VPNManager.shared.reload(hot: true) { err = e }
             await load()
         }
         UINotificationFeedbackGenerator().notificationOccurred(err == nil ? .success : .error)
@@ -168,7 +175,14 @@ struct RulesView: View {
     }
 
     func applySetChange() async {
-        if vpn.isConnected, let e = await VPNManager.shared.reload(hot: true) { custom.message = e }
+        // feat/profile-write-back: rule edits land in the profile file first (a subscription switches to
+        // its local copy, which already reloads); the hot reload below then runs what the file now says.
+        var switched = false
+        if let o = await ProfileWriteBack.materializeActive() {
+            switched = o.switched
+            if let n = o.note { custom.message = n }
+        }
+        if !switched, vpn.isConnected, let e = await VPNManager.shared.reload(hot: true) { custom.message = e }
         await load()
     }
 
@@ -248,7 +262,7 @@ struct RulesView: View {
         .sheet(isPresented: $editingFinal) {
             PolicyPickerSheet(title: Text(verbatim: "Final"), current: finalPolicy ?? profileRules.finalInfo.policy,
                               original: profileRules.finalInfo.original,
-                              footer: "修改保存在 Tern 里，配置文件不会改动；更新配置后仍然有效。") { saveFinal($0) }
+                              footer: "保存后立即生效。修改会写进配置文件；订阅配置会先生成一份本地副本，修改写进副本，原订阅不受影响。") { saveFinal($0) }
         }
         .sheet(item: $editingSet) { s in
             RuleSetOverrideEditor(name: s.name,
@@ -461,7 +475,21 @@ struct RulesView: View {
         if vpn.isConnected {
             updatingLive.insert(name)
             do { try await ControllerClient.shared.updateRuleProvider(name); liveErrors[name] = nil }
-            catch { liveErrors[name] = error.localizedDescription }
+            catch {
+                // The native core does not re-fetch rule providers (PUT /providers/rules/{name}
+                // is not one of its routes — their files are App-managed), so its 404
+                // 「not available in native core」 is not the row's real error. Fall back to
+                // the App-side updater, like UpdateEverything does; clearing liveErrors lets
+                // the row show the updater's own outcome (success, or the real download /
+                // conversion error) instead of the misleading 404.
+                if let p = providersByName[name], p.vehicle == "http" {
+                    await updater.update(p.id)
+                    await offline.load()
+                    liveErrors[name] = nil
+                } else {
+                    liveErrors[name] = error.localizedDescription
+                }
+            }
             updatingLive.remove(name)
             await load()
         } else if let p = providersByName[name], p.vehicle == "http" {
@@ -483,12 +511,14 @@ struct RulesView: View {
         defer { updatingAll = false }
         for it in res.items where it.kind == "ruleset" && it.isRemote && it.enabled { await res.update(it) }
         res.message = nil
-        if vpn.isConnected {
-            for p in liveProviders.values where p.vehicleType == "HTTP" { await update(p.name) }
-        } else {
-            _ = await updater.updateAll(only: Set(offline.result.ruleProviders.map(\.id)))
-            await offline.load()
-        }
+        // Rule providers' files are App-managed and the native core lists none of them
+        // (GET /providers/rules is an empty stub) and has no PUT route for them — the old
+        // connected branch iterated that empty list, so the page's 更新 button silently
+        // did nothing while connected (device 2026-10-29). Connected or not, the
+        // profile's rule providers update through the App-side updater.
+        _ = await updater.updateAll(only: Set(offline.result.ruleProviders.map(\.id)))
+        await offline.load()
+        await load()
     }
 }
 
@@ -533,7 +563,7 @@ struct RuleSetOverrideEditor: View {
                         ForEach(choices, id: \.self) { Text(verbatim: $0).tag($0) }
                     }
                 } footer: {
-                    Text("修改保存在 Tern 里，配置文件不会改动；更新配置后仍然有效。")
+                    Text("保存后立即生效。修改会写进配置文件；订阅配置会先生成一份本地副本，修改写进副本，原订阅不受影响。")
                 }
             }
             .navigationTitle("编辑规则集")

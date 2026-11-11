@@ -9,8 +9,12 @@
 # fix/nc-sudoku-interop: the official SUDOKU-ASCII/sudoku server, built here from the pinned v0.5.2.0 source, on
 # :18090–:18094 (configs in tools/loopback/sudoku/) and a plain HTTP origin on :18095.
 #
-# Not covered, by design (see tools/loopback/README.md): WireGuard client (its NativeCore dialer exists only
-# inside the packet tunnel) and Mieru (sing-box has no mieru inbound to test against).
+# Not covered, by design (see tools/loopback/README.md): Mieru (sing-box has no mieru inbound to test against).
+#
+# Job `wireguard` (fix/kit-wireguard): the WireGuard data plane against a local sing-box WireGuard endpoint
+# (tools/loopback/wg-sing-box-config.json, UDP :18071, its own instance with a recorded test keypair; kit-shaped
+# parameters). The dialer + netif are PacketTunnel code, so the test class lives in TernE2ETunnelTests (scheme
+# TernE2E), like openconnect / masque-ip; the fleet (start-servers.sh) supplies the endpoint + echo backend.
 #
 # Job `openconnect` (fix/nc-openconnect-dp): the OpenConnect data plane against a REAL ocserv — Alpine + ocserv
 # under QEMU (TCG; macOS runners have no Docker / nested virtualisation), tools/loopback/ocserv. The netif is
@@ -30,13 +34,17 @@
 # test-without-building on those products. When Self-test calls this workflow (extras proto / loopback / …) with
 # prebuilt=true, the caller's build jobs supply the products and the build jobs here are skipped. The ocserv /
 # CONNECT-IP VMs still boot in the background while the job downloads the products and the simulator boots.
+# Job `warp-register` (feat/nc-warp-register, OPT-IN: dispatch with jobs containing "warp-register"; never on push): the
+# in-app registration client App/Core/WarpRegistration.swift registers a throwaway free WARP device against the REAL
+# Cloudflare API (CryptoKit P-256 key, POST /reg + PATCH /reg/{id}), E2ETests/WarpRegistrationLiveTests dials the resulting
+# node through NativeCore MASQUE and fetches /cdn-cgi/trace (warp=on); the test deletes the device in tearDown.
 name: Proto loopback
 
 on:
   workflow_dispatch:
     inputs:
       jobs:
-        description: "Jobs to run (comma list of loopback, openconnect, masque-ip, masque-warp). Empty = all except the opt-in masque-warp."
+        description: "Jobs to run (comma list of loopback, openconnect, masque-ip, wireguard, masque-warp, warp-register). Empty = all except the opt-in masque-warp / warp-register."
         required: false
         default: ""
   workflow_call:
@@ -46,7 +54,7 @@ on:
         required: false
         default: ""
       jobs:
-        description: "Comma list of loopback, openconnect, masque-ip, masque-warp (empty = all except masque-warp)"
+        description: "Comma list of loopback, openconnect, masque-ip, wireguard, masque-warp, warp-register (empty = all except masque-warp / warp-register)"
         type: string
         required: false
         default: ""
@@ -71,6 +79,8 @@ on:
       - ".github/workflows/proto-loopback.yml"
       - "PacketTunnel/NativeCore/NCOpenConnectNetif.swift"
       - "PacketTunnel/NativeCore/NCWireGuard.swift"
+      - "PacketTunnel/NativeCore/NCWireGuardCrypto.swift"
+      - "E2ETests/NCWireGuardLoopbackTests.swift"
       - "E2ETests/NCOpenConnectLoopbackTests.swift"
       - "PacketTunnel/NativeCore/NCMASQUEIPNetif.swift"
       - "E2ETests/NCMASQUEIPLoopbackTests.swift"
@@ -91,7 +101,7 @@ jobs:
       scheme: TernUITests
 
   build-e2e:
-    if: github.repository == 'wdjiangdev/mihomo-ios' && !inputs.prebuilt && ((!inputs.jobs || contains(inputs.jobs, 'openconnect')) || (!inputs.jobs || contains(inputs.jobs, 'masque-ip')) || contains(inputs.jobs, 'masque-warp'))
+    if: github.repository == 'wdjiangdev/mihomo-ios' && !inputs.prebuilt && ((!inputs.jobs || contains(inputs.jobs, 'openconnect')) || (!inputs.jobs || contains(inputs.jobs, 'masque-ip')) || (!inputs.jobs || contains(inputs.jobs, 'wireguard')) || contains(inputs.jobs, 'masque-warp') || contains(inputs.jobs, 'wireguard-zh') || contains(inputs.jobs, 'juicity-zh') || contains(inputs.jobs, 'juicity-lb') || contains(inputs.jobs, 'ss-obfs-zh'))
     uses: ./.github/workflows/build-for-testing.yml
     with:
       ref: ${{ inputs.ref }}
@@ -252,6 +262,87 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  wireguard:
+    needs: build-e2e
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && (!inputs.jobs || contains(inputs.jobs, 'wireguard')) && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Set up Go (official Sudoku server build; part of the fleet start)
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Build official Sudoku server (SUDOKU-ASCII/sudoku v0.5.2.0, from source)
+        run: |
+          set -euo pipefail
+          git clone -q --depth 1 --branch v0.5.2.0 https://github.com/SUDOKU-ASCII/sudoku /tmp/sudoku-src
+          REV=$(git -C /tmp/sudoku-src rev-parse HEAD)
+          echo "sudoku v0.5.2.0 @ $REV"
+          test "$REV" = 56ce6f1aeea18aa69b9bc1d57557ed312b59e5f5
+          mkdir -p /tmp/nc-loopback/bin
+          (cd /tmp/sudoku-src && GOTOOLCHAIN=auto go build -trimpath -ldflags "-s -w" -o /tmp/nc-loopback/bin/sudoku ./cmd/sudoku-tunnel)
+          /tmp/nc-loopback/bin/sudoku -h 2>&1 | head -n 3 || true
+          echo "SUDOKU_BIN=/tmp/nc-loopback/bin/sudoku" >> "$GITHUB_ENV"
+      - name: Start loopback servers
+        run: |
+          tools/loopback/start-servers.sh start
+          tools/loopback/start-servers.sh status
+      # Same Xcode as the build, simulator boot started, products unpacked ($TERN_PRODUCTS, $XCTESTRUN, $DEV).
+      - uses: ./.github/actions/tern-prebuilt
+        with:
+          scheme: TernE2E
+          xcode: ${{ inputs.xcode_e2e || needs.build-e2e.outputs.xcode }}
+      # As the TernE2E scheme's disableThreadPerformanceChecker did for these jobs (scripts/ci/strip-tpc.py).
+      - name: Disable Thread Performance Checker
+        run: python3 scripts/ci/strip-tpc.py "$XCTESTRUN"
+      - name: Run WireGuard loopback tests
+        run: |
+          set +e
+          xcrun simctl bootstatus "$DEV" -b
+          mkdir -p results
+          # NC_WG_LOOPBACK=1: the tests fail loudly (never skip) when the endpoint is unreachable.
+          # NC_WG_ECHO_HOST: the runner's primary IPv4. The echo target through the tunnel
+          # must not be a loopback address — the endpoint's gVisor netstack drops inner
+          # packets with a loopback destination as martian (fix/kit-wireguard phase 2).
+          ECHO_HOST="$(ipconfig getifaddr en0 || true)"
+          if [ -z "$ECHO_HOST" ]; then ECHO_HOST="$(ifconfig | awk '/inet / && $2 !~ /^127\./ {print $2; exit}')"; fi
+          test -n "$ECHO_HOST" || { echo "::error::no primary IPv4 for the WireGuard echo target"; exit 1; }
+          echo "WireGuard echo target: $ECHO_HOST:18080"
+          TEST_RUNNER_JSC_useJIT=false TEST_RUNNER_NC_WG_LOOPBACK=1 TEST_RUNNER_NC_WG_ECHO_HOST="$ECHO_HOST" \
+          xcodebuild -xctestrun "$XCTESTRUN" -destination "id=$DEV" -resultBundlePath results/wireguard.xcresult \
+            -only-testing:TernE2ETunnelTests/NCWireGuardLoopbackTests test-without-building 2>&1 | tee results/wireguard.log \
+            | grep -E "Test Case .*(failed|passed|skipped)|error:|XCTAssert|Executed|wg-loopback|wireguard:"
+          RC=${PIPESTATUS[0]}
+          [ "$RC" = 0 ] || tail -n 150 results/wireguard.log
+          # A run where every test skipped is a failure here.
+          if grep -q "skipped" results/wireguard.log && ! grep -q "passed" results/wireguard.log; then RC=1; echo "::error::all WireGuard loopback tests skipped"; fi
+          {
+            echo "### WireGuard loopback (sing-box endpoint)"
+            grep -E "Executed [0-9]+ tests?" results/wireguard.log | tail -n 1 | sed 's/^/- /'
+            echo "- exit $RC"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
+      - name: Stop loopback servers
+        if: always()
+        run: |
+          tools/loopback/start-servers.sh stop || true
+          mkdir -p results
+          cp /tmp/nc-loopback/wg-sing-box.log results/wg-sing-box.log 2>/dev/null || true
+          echo "--- wg-sing-box.log (last 80) ---"
+          tail -n 80 /tmp/nc-loopback/wg-sing-box.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wireguard-loopback-results
+          path: |
+            results/wireguard.log
+            results/wg-sing-box.log
+          if-no-files-found: warn
+          retention-days: 14
+
   masque-ip:
     needs: build-e2e
     if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && (!inputs.jobs || contains(inputs.jobs, 'masque-ip')) && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
@@ -382,3 +473,309 @@ jobs:
             results/masque-warp.log
           if-no-files-found: warn
           retention-days: 14
+
+
+  wireguard-zh:
+    needs: build-e2e
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && contains(inputs.jobs, 'wireguard-zh') && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/tern-prebuilt
+        with:
+          scheme: TernE2E
+          xcode: ${{ inputs.xcode_e2e || needs.build-e2e.outputs.xcode }}
+      - name: Disable Thread Performance Checker
+        run: python3 scripts/ci/strip-tpc.py "$XCTESTRUN"
+      - name: Run WireGuard interop tests (real zhiheng kit server, UDP 24034)
+        run: |
+          set +e
+          xcrun simctl bootstatus "$DEV" -b
+          mkdir -p results
+          TEST_RUNNER_JSC_useJIT=false \
+          TEST_RUNNER_NC_WG_ZH=1 \
+          TEST_RUNNER_NC_WG_SERVER=45.92.159.155 \
+          TEST_RUNNER_NC_WG_PORT=24034 \
+          TEST_RUNNER_NC_WG_PRIV='OJVQcAQumlNiADByjF03bEqlq5jHFN2k3DFN0BaE/Eo=' \
+          TEST_RUNNER_NC_WG_PUB='pDuHgrRuI0rWdogrndZwuyr/D68pUDok1FbXP9Rk0X0=' \
+          xcodebuild -xctestrun "$XCTESTRUN" -destination "id=$DEV" -resultBundlePath results/wireguard-zh.xcresult \
+            -only-testing:TernE2ETunnelTests/NCWireGuardZhihengInteropTests \
+            -only-testing:TernE2ETunnelTests/NCWireGuardParseProbeTests \
+            -only-testing:TernE2ETunnelTests/NCWireGuardTunnelDelayTests test-without-building 2>&1 | tee results/wireguard-zh.log \
+            | grep -E "Test Case .*(failed|passed|skipped)|error:|XCTAssert|Executed|wg-zh|wg-prod|wg-parse|wg-tunnel"
+          RC=${PIPESTATUS[0]}
+          [ "$RC" = 0 ] || tail -n 150 results/wireguard-zh.log
+          if grep -q "skipped" results/wireguard-zh.log && ! grep -q "passed" results/wireguard-zh.log; then RC=1; echo "::error::all WireGuard zhiheng tests skipped"; fi
+          {
+            echo "### WireGuard interop (real zhiheng kit server)"
+            grep -E "Executed [0-9]+ tests?" results/wireguard-zh.log | tail -n 1 | sed 's/^/- /'
+            grep -E "Test Case .*(passed|failed)" results/wireguard-zh.log | sed -E 's/.*-\[[^ ]+ ([^]]+)\]. (passed|failed).*/- \1: \2/'
+            grep -E "wg-zh|wg-prod|wg-parse|wg-tunnel" results/wireguard-zh.log | sed 's/^/- /'
+            echo "- exit $RC"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: wireguard-zh-interop-results
+          path: |
+            results/wireguard-zh.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  juicity-zh:
+    needs: build-e2e
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && contains(inputs.jobs, 'juicity-zh') && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/tern-prebuilt
+        with:
+          scheme: TernE2E
+          xcode: ${{ inputs.xcode_e2e || needs.build-e2e.outputs.xcode }}
+      - name: Disable Thread Performance Checker
+        run: python3 scripts/ci/strip-tpc.py "$XCTESTRUN"
+      - name: Run Juicity interop tests (real zhiheng kit server, UDP 24033)
+        run: |
+          set +e
+          xcrun simctl bootstatus "$DEV" -b
+          mkdir -p results
+          TEST_RUNNER_JSC_useJIT=false \
+          TEST_RUNNER_NC_JUICITY_ZH=1 \
+          TEST_RUNNER_NC_JUICITY_SERVER=45.92.159.155 \
+          TEST_RUNNER_NC_JUICITY_PORT=24033 \
+          TEST_RUNNER_NC_JUICITY_EXPECT_EGRESS='45.92.159.155,2a12:a304:4:ac4::a' \
+          TEST_RUNNER_NC_JUICITY_UUID='6ceb5215-15b9-4ef3-8a48-61ee6ff3ae71' \
+          TEST_RUNNER_NC_JUICITY_PASSWORD='yeCsUwsFbAhUYMUgdeiC' \
+          xcodebuild -xctestrun "$XCTESTRUN" -destination "id=$DEV" -resultBundlePath results/juicity-zh.xcresult \
+            -only-testing:TernE2ETunnelTests/NCJuicityZhihengInteropTests test-without-building 2>&1 | tee results/juicity-zh.log \
+            | grep -E "Test Case .*(failed|passed|skipped)|error:|XCTAssert|Executed|juicity-zh"
+          RC=${PIPESTATUS[0]}
+          [ "$RC" = 0 ] || tail -n 150 results/juicity-zh.log
+          if grep -q "skipped" results/juicity-zh.log && ! grep -q "passed" results/juicity-zh.log; then RC=1; echo "::error::all Juicity zhiheng tests skipped"; fi
+          {
+            echo "### Juicity interop (real zhiheng kit server)"
+            grep -E "Executed [0-9]+ tests?" results/juicity-zh.log | tail -n 1 | sed 's/^/- /'
+            grep -E "Test Case .*(passed|failed)" results/juicity-zh.log | sed -E 's/.*-\[[^ ]+ ([^]]+)\]. (passed|failed).*/- \1: \2/'
+            grep -E "juicity-zh" results/juicity-zh.log | sed 's/^/- /'
+            echo "- exit $RC"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: juicity-zh-interop-results
+          path: |
+            results/juicity-zh.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  ss-obfs-zh:
+    needs: build-e2e
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && contains(inputs.jobs, 'ss-obfs-zh') && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/tern-prebuilt
+        with:
+          scheme: TernE2E
+          xcode: ${{ inputs.xcode_e2e || needs.build-e2e.outputs.xcode }}
+      - name: Disable Thread Performance Checker
+        run: python3 scripts/ci/strip-tpc.py "$XCTESTRUN"
+      - name: Run SS-Obfs interop tests (real zhiheng kit server, TCP 24021)
+        run: |
+          set +e
+          xcrun simctl bootstatus "$DEV" -b
+          mkdir -p results
+          TEST_RUNNER_JSC_useJIT=false \
+          TEST_RUNNER_NC_SSOBFS_ZH=1 \
+          TEST_RUNNER_NC_SSOBFS_SERVER=45.92.159.155 \
+          TEST_RUNNER_NC_SSOBFS_PORT=24021 \
+          TEST_RUNNER_NC_SSOBFS_PASSWORD='K0Alt8rg3ONkK6f97ISlQnKq' \
+          xcodebuild -xctestrun "$XCTESTRUN" -destination "id=$DEV" -resultBundlePath results/ss-obfs-zh.xcresult \
+            -only-testing:TernE2ETunnelTests/NCSSObfsZhihengInteropTests test-without-building 2>&1 | tee results/ss-obfs-zh.log \
+            | grep -E "Test Case .*(failed|passed|skipped)|error:|XCTAssert|Executed|ssobfs-zh"
+          RC=${PIPESTATUS[0]}
+          [ "$RC" = 0 ] || tail -n 150 results/ss-obfs-zh.log
+          if grep -q "skipped" results/ss-obfs-zh.log && ! grep -q "passed" results/ss-obfs-zh.log; then RC=1; echo "::error::all SS-Obfs zhiheng tests skipped"; fi
+          {
+            echo "### SS-Obfs interop (real zhiheng kit server)"
+            grep -E "Executed [0-9]+ tests?" results/ss-obfs-zh.log | tail -n 1 | sed 's/^/- /'
+            grep -E "Test Case .*(passed|failed)" results/ss-obfs-zh.log | sed -E 's/.*-\[[^ ]+ ([^]]+)\]. (passed|failed).*/- \1: \2/'
+            grep -E "ssobfs-zh" results/ss-obfs-zh.log | sed 's/^/- /'
+            echo "- exit $RC"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ss-obfs-zh-interop-results
+          path: |
+            results/ss-obfs-zh.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  juicity-lb:
+    needs: build-e2e
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && contains(inputs.jobs, 'juicity-lb') && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/tern-prebuilt
+        with:
+          scheme: TernE2E
+          xcode: ${{ inputs.xcode_e2e || needs.build-e2e.outputs.xcode }}
+      - name: Disable Thread Performance Checker
+        run: python3 scripts/ci/strip-tpc.py "$XCTESTRUN"
+      - name: Start official juicity-server v0.5.0 on loopback (debug log)
+        run: |
+          set -e
+          mkdir -p results juic
+          cd juic
+          curl -sL --max-time 180 -o j.zip https://github.com/juicity/juicity/releases/download/v0.5.0/juicity-macos-arm64.zip
+          unzip -o -q j.zip
+          openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes -subj "/CN=tern.test" -addext "subjectAltName=DNS:tern.test,IP:127.0.0.1" 2>/dev/null
+          cat > server.json <<'JSON'
+          {
+            "listen": "127.0.0.1:24333",
+            "users": {"6ceb5215-15b9-4ef3-8a48-61ee6ff3ae71": "yeCsUwsFbAhUYMUgdeiC"},
+            "certificate": "cert.pem",
+            "private_key": "key.pem",
+            "congestion_control": "bbr",
+            "log_level": "debug"
+          }
+          JSON
+          (./juicity-server run -c server.json > ../results/juicity-lb-server.log 2>&1 &)
+          sleep 2
+          cat > client.json <<'JSON'
+          {
+            "listen": "127.0.0.1:11081",
+            "server": "127.0.0.1:24333",
+            "uuid": "6ceb5215-15b9-4ef3-8a48-61ee6ff3ae71",
+            "password": "yeCsUwsFbAhUYMUgdeiC",
+            "sni": "tern.test",
+            "allow_insecure": true,
+            "congestion_control": "bbr",
+            "log_level": "info"
+          }
+          JSON
+          (./juicity-client run -c client.json > ../results/juicity-lb-client.log 2>&1 &)
+          sleep 3
+          echo "official client egress via loopback server: $(curl -s --max-time 20 -x socks5h://127.0.0.1:11081 https://api.ipify.org || echo FAILED)"
+      - name: Run Juicity interop tests (loopback official server, 127.0.0.1:24333)
+        run: |
+          set +e
+          xcrun simctl bootstatus "$DEV" -b
+          sudo tcpdump -i lo0 -nn -w results/lb.pcap udp port 24333 >/dev/null 2>&1 &
+          TCPDUMP_PID=$!
+          TEST_RUNNER_JSC_useJIT=false \
+          TEST_RUNNER_NC_JUICITY_ZH=1 \
+          TEST_RUNNER_NC_JUICITY_SERVER=127.0.0.1 \
+          TEST_RUNNER_NC_JUICITY_PORT=24333 \
+          TEST_RUNNER_NC_JUICITY_UUID='6ceb5215-15b9-4ef3-8a48-61ee6ff3ae71' \
+          TEST_RUNNER_NC_JUICITY_PASSWORD='yeCsUwsFbAhUYMUgdeiC' \
+          xcodebuild -xctestrun "$XCTESTRUN" -destination "id=$DEV" -resultBundlePath results/juicity-lb.xcresult \
+            -only-testing:TernE2ETunnelTests/NCJuicityZhihengInteropTests test-without-building 2>&1 | tee results/juicity-lb.log \
+            | grep -E "Test Case .*(failed|passed|skipped)|error:|XCTAssert|Executed|juicity-zh|juicity-diag"
+          RC=${PIPESTATUS[0]}
+          sudo kill $TCPDUMP_PID 2>/dev/null; sleep 1
+          tcpdump -r results/lb.pcap -nn 2>/dev/null | head -80 > results/lb-packets.txt; cat results/lb-packets.txt
+          [ "$RC" = 0 ] || tail -n 150 results/juicity-lb.log
+          {
+            echo "### Juicity interop (loopback official juicity-server, debug log below in artifacts)"
+            grep -E "Executed [0-9]+ tests?" results/juicity-lb.log | tail -n 1 | sed 's/^/- /'
+            grep -E "Test Case .*(passed|failed)" results/juicity-lb.log | sed -E 's/.*-\[[^ ]+ ([^]]+)\]. (passed|failed).*/- \1: \2/'
+            grep -E "juicity-zh|juicity-diag" results/juicity-lb.log | sed 's/^/- /'
+            echo "- exit $RC"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: juicity-lb-interop-results
+          path: |
+            results/juicity-lb.log
+            results/juicity-lb-server.log
+            results/juicity-lb-client.log
+            results/lb-packets.txt
+            results/lb.pcap
+          if-no-files-found: warn
+          retention-days: 14
+
+  warp-register:
+    if: github.repository == 'wdjiangdev/mihomo-ios' && contains(inputs.jobs, 'warp-register')
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Select latest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app | sed -E 's/.*Xcode_([0-9.]+)\.app/\1 &/' | grep -v -i beta | sort -V | tail -n1 | cut -d' ' -f2)
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+      - name: Generate project (with test targets)
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec project-uitests.yml
+      - name: Pick simulator
+        run: |
+          DEV=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          devs=[(r,x) for r,l in d.items() if 'iOS' in r for x in l]
+          devs.sort(key=lambda rx: (0 if 'iOS-18' in rx[0] else 1, rx[0]))
+          for want in ['iPhone 16 Pro','iPhone 17 Pro','iPhone 15 Pro','iPhone 16']:
+              m=[(r,x) for r,x in devs if x['name']==want]
+              if m: print(m[0][1]['udid']); sys.stderr.write('using %s on %s\\n' % (want, m[0][0])); break
+          ")
+          test -n "$DEV"
+          echo "DEV=$DEV" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEV" || true
+      - name: Build for testing (TernE2E — PacketTunnel sources + App/Core/WarpRegistration.swift)
+        run: |
+          set -o pipefail
+          xcodebuild -project Tern.xcodeproj -scheme TernE2E -configuration Debug -sdk iphonesimulator \
+            -destination "id=$DEV" -derivedDataPath build/warpreg \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" CODE_SIGN_ENTITLEMENTS="" \
+            build-for-testing 2>&1 | tee build-warpreg.log | grep -E "error:|\*\* (TEST BUILD|BUILD)" || true
+          grep -q "TEST BUILD SUCCEEDED" build-warpreg.log || { tail -n 150 build-warpreg.log; exit 1; }
+      - name: Register in-app + trace through the new node (real Cloudflare API and endpoint)
+        run: |
+          set +e
+          xcrun simctl bootstatus "$DEV" -b
+          mkdir -p results
+          TEST_RUNNER_NC_WARP_REGISTER_LIVE=1 TEST_RUNNER_JSC_useJIT=false \
+          xcodebuild -project Tern.xcodeproj -scheme TernE2E -configuration Debug -sdk iphonesimulator \
+            -destination "id=$DEV" -derivedDataPath build/warpreg -resultBundlePath results/warp-register.xcresult \
+            -only-testing:TernE2ETunnelTests/WarpRegistrationLiveTests test-without-building 2>&1 | tee results/warp-register.log \
+            | grep -E "Test Case .*(failed|passed|skipped)|error:|XCTAssert|Executed|warp-register|masque"
+          RC=${PIPESTATUS[0]}
+          [ "$RC" = 0 ] || tail -n 150 results/warp-register.log
+          if grep -q "skipped" results/warp-register.log && ! grep -q "passed" results/warp-register.log; then RC=1; echo "::error::WARP registration live test skipped"; fi
+          {
+            echo "### In-app WARP registration (real Cloudflare API + endpoint)"
+            grep -E "Executed [0-9]+ tests?" results/warp-register.log | tail -n 1 | sed 's/^/- /'
+            grep -E "Test Case .*(passed|failed)" results/warp-register.log | sed -E 's/.*-\[[^ ]+ ([^]]+)\]. (passed|failed).*/- \1: \2/'
+            echo "- exit $RC"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: warp-register-live-results
+          path: |
+            results/warp-register.log
+            build-warpreg.log
+          if-no-files-found: warn

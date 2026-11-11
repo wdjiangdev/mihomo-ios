@@ -152,6 +152,11 @@ final class NativeScriptHost: ScriptHostAPI {
     static let shared = NativeScriptHost()
     static var geoLookup: ((String) -> String?)?
 
+    /// fix/nc-script-stats: the running tunnel's script-traffic ledger (NativeTunnelCore wires the
+    /// data plane's ledger in at start and nils it at stop); $httpClient exchanges count into it.
+    /// Nil in the app / unit-test host, where fetch is tunnel-only anyway.
+    var scriptTraffic: NCScriptTrafficLedger?
+
     private let lock = NSLock()
     private var tokenSeq: Int64 = 0
     private var slotSeq: Int64 = 0
@@ -604,9 +609,23 @@ final class NativeScriptHost: ScriptHostAPI {
             NCDiagLimiter.shared.line("[SCRIPT] \(name) ok in \(arg) ms")
             return ""
         case "btoa":
-            return Data(arg.utf8).base64EncodedString()
+            // Web btoa semantics: the input is a byte string — one byte per character (Latin-1).
+            // Encoding the string's UTF-8 instead doubles every byte >= 0x80 (U+00FF became
+            // 0xC3 0xBF), so any binary payload came out wrong. The prelude rejects characters
+            // above U+00FF before calling here, so every scalar is one byte.
+            return Data(arg.unicodeScalars.map { UInt8(truncatingIfNeeded: $0.value) }).base64EncodedString()
         case "atob":
-            return Data(base64Encoded: arg).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            // Web atob semantics: the result is a byte string (Latin-1), not UTF-8 text. The old
+            // code UTF-8-decoded the result and returned "" whenever the bytes were not valid
+            // UTF-8 — i.e. for almost any binary payload, such as the AES ciphertext a script
+            // base64-decodes before decrypting (build 546 device report: the Ximalaya script ran
+            // but every paid track failed with its own "EP decryption failed" error while the
+            // same script decrypted fine in Quantumult X). Tolerate missing padding and
+            // whitespace, as browsers do.
+            var b64 = arg.filter { !$0.isWhitespace }
+            while b64.count % 4 != 0 { b64.append("=") }
+            guard let d = Data(base64Encoded: b64) else { return "" }
+            return String(data: d, encoding: .isoLatin1) ?? ""
         case "notify":
             if let arr = (try? JSONSerialization.jsonObject(with: Data(arg.utf8))) as? [String],
                arr.count >= 3 {
@@ -734,6 +753,9 @@ final class NativeScriptHost: ScriptHostAPI {
         r.noRedirect = req.noRedirect ?? false
         r.policy = req.policy
         r.insecure = req.insecure ?? false
+        // fix/nc-script-stats: count this script's traffic; the name falls back like $httpAPI's label.
+        r.traffic = scriptTraffic
+        r.trafficSource = "script:\(entry(rule)?.name ?? "script #\(rule)")"
         switch NCScriptHTTPClient.fetch(r) {
         case .failure(let f):
             lock.lock(); logLines += 1; let n = logLines; lock.unlock()

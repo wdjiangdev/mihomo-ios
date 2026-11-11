@@ -14,28 +14,74 @@ protocol NCUDPSession: AnyObject {
 /// the data plane, so this stays one-to-one.
 final class NCUDPDirectSession: NCUDPSession {
     var onReply: (Data) -> Void = { _ in }
+    /// Set by the data plane: the connection died before/while serving — the plane tears the
+    /// session down so the flow's next datagram opens a fresh one instead of piling into a corpse.
+    var onDead: (() -> Void)?
     private let conn: NWConnection
     private var cancelled = false
+    private var ready = false
+    private var dead = false
+    private var outbox: [Data] = []
+    private let label: String
+    private var replies = 0
 
     init(target: NCTarget, queue: DispatchQueue) {
         let port = NWEndpoint.Port(rawValue: UInt16(clamping: target.port)) ?? .any
+        label = "\(target.host):\(target.port)"
         conn = NWConnection(host: NWEndpoint.Host(target.host), port: port, using: NCOutboundBinding.params(.udp, host: target.host))
         conn.stateUpdateHandler = { [weak self] state in
-            if case .ready = state { self?.receiveLoop() }
+            guard let self, !self.cancelled else { return }
+            switch state {
+            case .ready:
+                // fix/nc-udp-direct-ready: datagrams are only handed to the connection once it
+                // is ready — the discipline the (working) DNS forwarder uses. The old code sent
+                // the first datagram the moment the session was created, while the connection
+                // was still preparing; on device every QUIC-first app's direct UDP sessions then
+                // returned exactly 0 B (builds 543-546) while the forwarder's send-on-ready
+                // exchanges on the same binding completed 93/93.
+                self.ready = true
+                let queued = self.outbox
+                self.outbox.removeAll()
+                for d in queued { self.conn.send(content: d, completion: .idempotent) }
+                self.receiveLoop()
+            case .failed(let err):
+                StartupLog.write("[UDP] direct \(self.label) connection failed: \(err)")
+                self.die()
+            case .waiting(let err):
+                StartupLog.write("[UDP] direct \(self.label) connection waiting: \(err)")
+            default:
+                break
+            }
         }
         conn.start(queue: queue)
+    }
+
+    private func die() {
+        guard !dead else { return }
+        dead = true
+        outbox.removeAll()
+        onDead?()
     }
 
     private func receiveLoop() {
         conn.receiveMessage { [weak self] data, _, _, error in
             guard let self, !self.cancelled else { return }
-            if let data, !data.isEmpty { self.onReply(data) }
+            if let data, !data.isEmpty {
+                self.replies += 1
+                if self.replies == 1 { StartupLog.write("[UDP] direct \(self.label) first reply \(data.count) B") }
+                self.onReply(data)
+            }
             if error == nil { self.receiveLoop() }
         }
     }
 
     func send(_ data: Data, to target: NCTarget) {
-        conn.send(content: data, completion: .idempotent)
+        guard !cancelled, !dead else { return }
+        if ready {
+            conn.send(content: data, completion: .idempotent)
+        } else if outbox.count < 64 {
+            outbox.append(data)
+        }
     }
 
     func cancel() {
@@ -183,8 +229,9 @@ final class NCUDPSocks5Session: NCUDPSession {
             if queued.count < 64 { queued.append((data, target)) }
             return
         }
+        guard let addr = target.atypEncoded else { return }
         var packet = Data([0x00, 0x00, 0x00])
-        packet.append(target.atypEncoded)
+        packet.append(addr)
         packet.append(data)
         udp.send(content: packet, completion: .idempotent)
     }
@@ -288,7 +335,8 @@ final class NCUDPSSSession: NCUDPSession {
             conn.send(content: packet, completion: .idempotent)
             return
         }
-        var plain = target.atypEncoded
+        guard let addr = target.atypEncoded else { return }
+        var plain = addr
         plain.append(data)
         guard let aead, let packet = NCShadowsocks.udpPacketEncode(spec: aead.spec, master: aead.master, plain: plain)
         else { return }
@@ -370,12 +418,13 @@ final class NCUDPMuxSession: NCUDPSession {
 
     private func sendNow(_ data: Data, to target: NCTarget) {
         guard let stream else { return }
+        guard let frame = NCMux.udpPacketFrame(target: target, payload: data) else { return }
         var out = Data()
         if !requestWritten {
             requestWritten = true
-            out.append(NCMux.streamRequestUDPPacketAddr())
+            if let addr = NCMux.streamRequestUDPPacketAddr() { out.append(addr) }
         }
-        out.append(NCMux.udpPacketFrame(target: target, payload: data))
+        out.append(frame)
         stream.sendRaw(out)
     }
 
@@ -484,9 +533,9 @@ final class NCUDPAnyTLSSession: NCUDPSession {
         guard let stream else { return }
         if !requestWritten {
             requestWritten = true
-            stream.send(NCUoT.request(destination: flowTarget))
+            if let req = NCUoT.request(destination: flowTarget) { stream.send(req) }
         }
-        stream.send(NCUoT.packet(target: target, payload: data))
+        if let pkt = NCUoT.packet(target: target, payload: data) { stream.send(pkt) }
     }
 
     func cancel() {
@@ -576,7 +625,7 @@ final class NCUDPSnellSession: NCUDPSession {
 
     func send(_ data: Data, to target: NCTarget) {
         guard !dead, !cancelled else { return }
-        let frame = NCSnell.udpFrame(target: target, payload: data)
+        guard let frame = NCSnell.udpFrame(target: target, payload: data) else { return }
         if let v4Writer {
             if let w = v4Writer.frame(frame) { wire.send(w) }
         } else if let encoder {
@@ -625,7 +674,9 @@ final class NCUDPTrojanSession: NCUDPSession {
                 return
             }
             self.stream = s
-            s.send(NCTrojan.requestHead(password: password, target: firstTarget, udp: true))
+            if let head = NCTrojan.requestHead(password: password, target: firstTarget, udp: true) {
+                s.send(head)
+            }
             let queued = self.pending
             self.pending = []
             for d in queued { s.send(d) }
@@ -691,7 +742,7 @@ final class NCUDPTrojanSession: NCUDPSession {
     }
 
     func send(_ data: Data, to target: NCTarget) {
-        let packet = NCTrojan.udpPacket(target: target, payload: data)
+        guard let packet = NCTrojan.udpPacket(target: target, payload: data) else { return }
         if let stream { stream.send(packet); return }
         if !dead, !cancelled, pending.count < Self.maxPending { pending.append(packet) }
     }
@@ -751,10 +802,10 @@ final class NCUDPVMessSession: NCUDPSession {
             guard let self, err == nil else { return }
             let option: UInt8 = sec == NCVMess.securityNone ? 0
                 : NCVMess.optionChunkStream | NCVMess.optionChunkMasking
-            let plain = NCVMess.plainHeader(reqNonce: reqNonce, reqKey: reqKey, respV: respV,
-                                            option: option, security: sec,
-                                            padding: NCConnector.randomData(Int(NCConnector.randomData(1)[0]) % 16),
-                                            target: target, command: 0x02)
+            guard let plain = NCVMess.plainHeader(reqNonce: reqNonce, reqKey: reqKey, respV: respV,
+                                                  option: option, security: sec,
+                                                  padding: NCConnector.randomData(Int(NCConnector.randomData(1)[0]) % 16),
+                                                  target: target, command: 0x02) else { return }
             let sealed = NCVMess.sealHeader(cmdKey: NCVMess.cmdKey(uuidBytes: uuidBytes),
                                             plainHeader: plain,
                                             time: Int64(Date().timeIntervalSince1970),
@@ -980,8 +1031,9 @@ final class NCUDPSSRSession: NCUDPSession {
         let iv = Data((0..<ivSize).map { _ in UInt8.random(in: 0...255) })
         cipher.forEncryption = true
         cipher.setIV(iv)
+        guard let addr = target.atypEncoded else { return }
         var packet = iv
-        var plain = target.atypEncoded
+        var plain = addr
         plain.append(payload)
         packet.append(cipher.process(plain))
         conn.send(content: packet, completion: .idempotent)

@@ -27,6 +27,18 @@ final class NativeCoreLoopbackTests: XCTestCase {
     private static let trojanPort = 18005
     private static let hy2Port = 18006
     private static let tuicPort = 18007
+    private static let socks5TlsPort = 18019
+    private static let socks5Port = 18020
+    private static let socks5User = "nc-loop-socks-user"
+    private static let socks5Password = "nc-loop-socks-pw"
+    private static let snellPort = 18066
+    private static let realityPort = 18070
+    /// fix/kit-reality: public half of the loopback Reality keypair (private
+    /// half lives in tools/loopback/reality-sing-box-config.json). Short-id
+    /// deliberately equals the zhiheng kit's 8-byte value.
+    private static let realityPublicKey = "G-ekDdy00VdrkYTzzrfhcb1n7IhuWL3ZcWGVTsoWZDQ"
+    private static let realityShortID = "21dde3c3112bbc4b"
+    private static let realityPlainUUID = "66ac479b-e3fa-441c-9623-410aa2b66c28"
     private static let trustTunnelPort = 18013
     private static let trustTunnelUser = "nc-loop-tt-user"
     private static let trustTunnelPassword = "nc-loop-tt-pw"
@@ -45,6 +57,7 @@ final class NativeCoreLoopbackTests: XCTestCase {
     private static let trojanPassword = "nc-loop-trojan-pw"
     private static let hy2Password = "nc-loop-hy2-pw"
     private static let tuicPassword = "nc-loop-tuic-pw"
+    private static let snellPassword = "nc-loop-snell-psk"
 
     private static let echInnerSni = "localhost"
     /// Base64 of ECHConfigList matching tools/loopback/ech_config.pem
@@ -161,6 +174,66 @@ final class NativeCoreLoopbackTests: XCTestCase {
         Self.proxy(name: "loop-tuic", type: "tuic", port: Self.tuicPort, extra: [
             "uuid": .string(Self.uuid), "password": .string(Self.tuicPassword),
             "sni": .string("localhost"), "skip-cert-verify": .bool(true),
+        ])
+    }
+
+    /// Snell against the version-5 inbound on :18066 (fix/kit-snell5). The
+    /// fields mirror the canonical form the YAML importer produces for the
+    /// kit node: psk + password (same value), version, udp.
+    private static var snellV5Proxy: NCProxy {
+        Self.proxy(name: "loop-snell5", type: "snell", port: Self.snellPort, extra: [
+            "psk": .string(Self.snellPassword), "password": .string(Self.snellPassword),
+            "version": .number(5), "udp": .bool(true),
+        ])
+    }
+
+    /// Same server, node declared version 4: the v5 inbound must accept the
+    /// v4-format client stream (the documented v5↔v4 wire compatibility the
+    /// kit's official snell-server v5.0.1 also relies on).
+    private static var snellV4Proxy: NCProxy {
+        Self.proxy(name: "loop-snell4", type: "snell", port: Self.snellPort, extra: [
+            "psk": .string(Self.snellPassword), "password": .string(Self.snellPassword),
+            "version": .number(4), "udp": .bool(true),
+        ])
+    }
+
+    /// fix/kit-reality: VLESS-Reality against the sing-box 1.12.24 inbound
+    /// on :18070, fields mirroring the zhiheng kit node (fingerprint
+    /// chrome, 8-byte short-id) except host/port/uuid/key, which are
+    /// loopback-local, and the dest/SNI: www.apple.com instead of the
+    /// kit's www.microsoft.com. Microsoft's TLS 1.3 Certificate message
+    /// is 8273 bytes — over the 8192-byte patch window (realitySize) of
+    /// the REALITY server implementation (metacubex/utls reality.go:
+    /// "if handshakeLen > int(realitySize) { break f }"), which aborts
+    /// phase 2 for EVERY client after the auth itself has already
+    /// succeeded; apple's Certificate message is 4738 bytes and works.
+    /// Diagnosis runs: 41053290427 (microsoft, both echo tests fail
+    /// "closed"), 41056084496 (server trace proving auth passed +
+    /// Certificate: 8273), 41057812114 (apple, all green).
+    private static var vlessRealityVisionProxy: NCProxy {
+        Self.proxy(name: "loop-vless-reality-vision", type: "vless", port: Self.realityPort, extra: [
+            "uuid": .string(Self.uuid), "network": .string("tcp"), "udp": .bool(true),
+            "tls": .bool(true), "flow": .string("xtls-rprx-vision"),
+            "servername": .string("www.apple.com"), "client-fingerprint": .string("chrome"),
+            "reality-opts": .object([
+                "public-key": .string(Self.realityPublicKey),
+                "short-id": .string(Self.realityShortID),
+            ]),
+        ])
+    }
+
+    /// Same inbound, flow-less user (the kit has no plain user; the known-
+    /// good Xray 24443 instance passed both, so plain is the control that
+    /// separates "REALITY auth" from "vision framing" failures).
+    private static var vlessRealityPlainProxy: NCProxy {
+        Self.proxy(name: "loop-vless-reality-plain", type: "vless", port: Self.realityPort, extra: [
+            "uuid": .string(Self.realityPlainUUID), "network": .string("tcp"), "udp": .bool(true),
+            "tls": .bool(true),
+            "servername": .string("www.apple.com"), "client-fingerprint": .string("chrome"),
+            "reality-opts": .object([
+                "public-key": .string(Self.realityPublicKey),
+                "short-id": .string(Self.realityShortID),
+            ]),
         ])
     }
 
@@ -315,7 +388,7 @@ final class NativeCoreLoopbackTests: XCTestCase {
     func testServerPortsReachable() {
         for port in [Self.ssPort, Self.ss2022Port, Self.vmessPort, Self.vlessPort,
                      Self.trojanPort, Self.vlessEchPort, Self.trojanEchPort,
-                     Self.tcpEchoPort, Self.blackholePort] {
+                     Self.snellPort, Self.realityPort, Self.tcpEchoPort, Self.blackholePort] {
             let conn = NWConnection(host: NWEndpoint.Host(Self.host),
                                     port: NWEndpoint.Port(rawValue: UInt16(port))!,
                                     using: .tcp)
@@ -390,6 +463,100 @@ final class NativeCoreLoopbackTests: XCTestCase {
 
     func testTUICTCPEcho() throws {
         let stream = try self.connect(proxy: Self.tuicProxy, target: Self.echoTarget)
+        defer { stream.cancel() }
+        try self.assertEcho(stream, payload: Self.payload)
+    }
+
+    /// fix/kit-snell5: Snell v5 node against the sing-box Snell v5 inbound
+    /// (sing-snell's model of the official snell-server v5.0.1). The second,
+    /// larger round trip crosses the 0x3FFF frame cap and the server's
+    /// frame-size ramp in both directions.
+    func testSnellV5TCPEcho() throws {
+        let stream = try self.connect(proxy: Self.snellV5Proxy, target: Self.echoTarget)
+        defer { stream.cancel() }
+        try self.assertEcho(stream, payload: Self.payload)
+        let big = Data((0..<100_003).map { UInt8(($0 * 7 + 3) & 0xff) })
+        try self.assertEcho(stream, payload: big)
+    }
+
+    /// The same v5 inbound with the node declared version 4 (v5 servers
+    /// accept v4-format clients; this is the path the kit's Snell4 node
+    /// exercises against snell-server v4.1.1, transplanted to v5).
+    func testSnellV4TCPEcho() throws {
+        let stream = try self.connect(proxy: Self.snellV4Proxy, target: Self.echoTarget)
+        defer { stream.cancel() }
+        try self.assertEcho(stream, payload: Self.payload)
+    }
+
+    /// fix/kit-reality: Reality (sing-box 1.12.24, apple dest — see the
+    /// proxy comment for the microsoft-dest server limit, 8-byte
+    /// short-id) with the vision flow the kit node carries.
+    func testVLESSRealityVisionTCPEcho() throws {
+        let stream = try self.connect(proxy: Self.vlessRealityVisionProxy, target: Self.echoTarget)
+        defer { stream.cancel() }
+        try self.assertEcho(stream, payload: Self.payload)
+    }
+
+    /// fix/kit-reality control: same Reality inbound, flow-less user.
+    func testVLESSRealityPlainTCPEcho() throws {
+        let stream = try self.connect(proxy: Self.vlessRealityPlainProxy, target: Self.echoTarget)
+        defer { stream.cancel() }
+        try self.assertEcho(stream, payload: Self.payload)
+    }
+
+    // MARK: - SOCKS5 / SOCKS5 over TLS (feat/nc-socks5-tls, #168)
+    // Servers: the minimal SOCKS5 servers in tools/loopback/echo_server.py —
+    // plain on :18020, TLS-wrapped on :18019 (self-signed cert, SAN localhost).
+
+    private static var socks5PlainProxy: NCProxy {
+        Self.proxy(name: "loop-socks5", type: "socks5", port: Self.socks5Port, extra: [:])
+    }
+
+    private static var socks5TLSProxy: NCProxy {
+        Self.proxy(name: "loop-socks5-tls", type: "socks5", port: Self.socks5TlsPort, extra: [
+            "tls": .bool(true), "sni": .string("localhost"), "skip-cert-verify": .bool(true),
+        ])
+    }
+
+    private static var socks5TLSAuthProxy: NCProxy {
+        Self.proxy(name: "loop-socks5-tls-auth", type: "socks5", port: Self.socks5TlsPort, extra: [
+            "tls": .bool(true), "sni": .string("localhost"), "skip-cert-verify": .bool(true),
+            "username": .string(Self.socks5User), "password": .string(Self.socks5Password),
+        ])
+    }
+
+    func testSocks5PlainEcho() throws {
+        let stream = try self.connect(proxy: Self.socks5PlainProxy, target: Self.echoTarget)
+        defer { stream.cancel() }
+        try self.assertEcho(stream, payload: Self.payload)
+    }
+
+    func testSocks5TLSEcho() throws {
+        let stream = try self.connect(proxy: Self.socks5TLSProxy, target: Self.echoTarget)
+        defer { stream.cancel() }
+        try self.assertEcho(stream, payload: Self.payload)
+        let stream2 = try self.connect(proxy: Self.socks5TLSProxy, target: Self.echoTarget)
+        defer { stream2.cancel() }
+        try self.assertEcho(stream2, payload: Data((0..<(1 << 20)).map { UInt8(($0 * 31 + 7) & 0xff) }), timeout: 60)
+    }
+
+    func testSocks5TLSWithAuth() throws {
+        let stream = try self.connect(proxy: Self.socks5TLSAuthProxy, target: Self.echoTarget)
+        defer { stream.cancel() }
+        try self.assertEcho(stream, payload: Self.payload)
+    }
+
+    func testSocks5TLSWrongSNIRejected() throws {
+        // Without skip-cert-verify the self-signed loopback cert must not
+        // verify for a wrong SNI; with it, the same node connects.
+        let strict = Self.proxy(name: "loop-socks5-tls-wrong-sni", type: "socks5", port: Self.socks5TlsPort, extra: [
+            "tls": .bool(true), "sni": .string("wrong.example.com"),
+        ])
+        XCTAssertThrowsError(try self.connect(proxy: strict, target: Self.echoTarget))
+        let skipping = Self.proxy(name: "loop-socks5-tls-wrong-sni-skip", type: "socks5", port: Self.socks5TlsPort, extra: [
+            "tls": .bool(true), "sni": .string("wrong.example.com"), "skip-cert-verify": .bool(true),
+        ])
+        let stream = try self.connect(proxy: skipping, target: Self.echoTarget)
         defer { stream.cancel() }
         try self.assertEcho(stream, payload: Self.payload)
     }
@@ -592,7 +759,7 @@ final class NativeCoreLoopbackTests: XCTestCase {
         let conn = try self.udpConnection(to: Self.ssPort)
         defer { conn.cancel() }
         let target = NCTarget(host: Self.host, port: Self.udpEchoPort)
-        var plain = target.atypEncoded
+        var plain = try XCTUnwrap(target.atypEncoded)
         plain.append(Self.dnsQuery)
         let packet = try XCTUnwrap(NCShadowsocks.udpPacketEncode(cipher: Self.ssCipher,
                                                                  password: Self.ssPassword, plain: plain))
@@ -789,8 +956,8 @@ final class NativeCoreLoopbackTests: XCTestCase {
             let stream = try self.connect(proxy: proxy, target: NCUoT.magicTarget)
             defer { stream.cancel() }
             let target = NCTarget(host: Self.host, port: Self.udpEchoPort)
-            stream.send(NCUoT.request(destination: target))
-            stream.send(NCUoT.packet(target: target, payload: Self.dnsQuery))
+            stream.send(try XCTUnwrap(NCUoT.request(destination: target)))
+            stream.send(try XCTUnwrap(NCUoT.packet(target: target, payload: Self.dnsQuery)))
             let exp = self.expectation(description: "uot reply \(quic)")
             let box = LockedBox<Data>(Data())
             func pump() {
@@ -1644,5 +1811,137 @@ extension NativeCoreLoopbackTests {
         let stream = try self.sudokuDial(p, target: Self.sudokuEcho)
         defer { stream.cancel() }
         try self.assertEcho(stream, payload: Data(Self.sudokuPayload.prefix(4096)))
+    }
+
+    // MARK: Sudoku UDP (feat/nc-sudoku-udp): UoT inside the tunnel, KIP StartUoT, against the official server
+
+    /// tools/loopback/echo_server.py's DNS responder: answers every A query with 192.0.2.53.
+    private static let loopDNSPort = 18084
+
+    /// The data plane's Sudoku UDP session (NCSudokuUDPSession, created by NCDataPlane.openUDP) against the official
+    /// server; datagrams are sent in order and the replies collected with the peer the server reported.
+    /// `afterFirstReply` datagrams are sent once the first reply arrived (the tunnel is up).
+    private func sudokuUDP(_ proxy: NCProxy, _ datagrams: [(NCTarget, Data)], afterFirstReply: [(NCTarget, Data)] = [],
+                           expect: Int, timeout: TimeInterval = 20) throws -> [(peer: NCTarget?, payload: Data)] {
+        XCTAssertNil(NCSupport.unsupportedReason(proxy), "\(proxy.name): node must be available")
+        let queue = DispatchQueue(label: "nc.loopback.sudoku-udp.\(proxy.name)")
+        let replies = LockedBox<[(peer: NCTarget?, payload: Data)]>([])
+        let closed = LockedBox<String?>(nil)
+        let exp = self.expectation(description: "sudoku udp \(proxy.name)")
+        exp.expectedFulfillmentCount = max(1, expect)
+        exp.assertForOverFulfill = false
+        let session: NCSudokuUDPSession = queue.sync {
+            let s = NCSudokuUDPSession(proxy: proxy, queue: queue)
+            s.onDatagram = { [weak s] peer, payload in
+                var r = replies.get(); r.append((peer, payload)); replies.set(r)
+                if r.count == 1, let s { for (t, d) in afterFirstReply { s.send(d, to: t) } }
+                exp.fulfill()
+            }
+            s.onClose = { err in
+                closed.set(err?.localizedDescription ?? "EOF")
+                for _ in 0..<max(1, expect) { exp.fulfill() }
+            }
+            return s
+        }
+        defer { queue.sync { session.cancel() } }
+        // Sent while the tunnel is still opening: exercises the bounded pre-open queue too.
+        queue.async { for (t, d) in datagrams { session.send(d, to: t) } }
+        // XCTWaiter: a short count is reported by the callers' assertions, not as a bare timeout.
+        _ = XCTWaiter().wait(for: [exp], timeout: timeout)
+        if let why = closed.get(), replies.get().count < expect {
+            XCTFail("\(proxy.name): UoT tunnel closed early: \(why)")
+        }
+        return replies.get()
+    }
+
+    /// DNS-sized + 1400-byte datagrams to the UDP echo backend by IP, and one to a domain (resolved by the server).
+    func testSudokuUDPEcho() throws {
+        let p = Self.sudokuProxy("loop-sudoku-udp", 18090, ["aead-method": .string("chacha20-poly1305")])
+        let big = Data((0..<1400).map { UInt8(($0 * 13 + 5) & 0xff) })
+        let echo = NCTarget(host: "127.0.0.1", port: Self.udpEchoPort)
+        let r = try self.sudokuUDP(p, [(echo, Self.dnsQuery), (echo, big),
+                                       (NCTarget(host: "localhost", port: Self.udpEchoPort), Data("by-domain".utf8))],
+                                   expect: 3)
+        XCTAssertEqual(r.count, 3, "replies: \(r.map { $0.payload.count })")
+        let payloads = r.map { $0.payload }
+        XCTAssertTrue(payloads.contains(Self.dnsQuery), "DNS-sized datagram not echoed")
+        XCTAssertTrue(payloads.contains(big), "1400-byte datagram not echoed byte-exact")
+        XCTAssertTrue(payloads.contains(Data("by-domain".utf8)), "domain-addressed datagram not echoed")
+        for x in r {
+            XCTAssertEqual(x.peer?.host, "127.0.0.1")
+            XCTAssertEqual(x.peer?.port, Self.udpEchoPort)
+        }
+    }
+
+    /// DNS over UDP through the tunnel: a real query answered by a real (loopback) DNS server.
+    func testSudokuUDPDNSQuery() throws {
+        let p = Self.sudokuProxy("loop-sudoku-dns", 18090, [:])
+        var q = Data([0x5a, 0x17, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+        for label in ["tern-sudoku", "test"] {
+            q.append(UInt8(label.utf8.count))
+            q.append(contentsOf: label.utf8)
+        }
+        q.append(contentsOf: [0x00, 0x00, 0x01, 0x00, 0x01])
+        let r = try self.sudokuUDP(p, [(NCTarget(host: "127.0.0.1", port: Self.loopDNSPort), q)], expect: 1)
+        let answer = try XCTUnwrap(r.first?.payload, "no DNS answer through the Sudoku UoT tunnel")
+        XCTAssertGreaterThanOrEqual(answer.count, q.count + 16)
+        let a = [UInt8](answer)
+        XCTAssertEqual(Array(a[0..<2]), [0x5a, 0x17], "transaction id")
+        XCTAssertEqual(a[2] & 0x80, 0x80, "QR bit")
+        XCTAssertEqual(Int(a[6]) << 8 | Int(a[7]), 1, "ANCOUNT")
+        XCTAssertEqual(Array(a.suffix(4)), [192, 0, 2, 53], "A record")
+    }
+
+    /// The other wire variants carry UoT too: prefer_ascii + aes-128-gcm + packed downlink, and
+    /// up_ascii_down_entropy + custom table + aead none.
+    func testSudokuUDPEchoAcrossWireVariants() throws {
+        let echo = NCTarget(host: "127.0.0.1", port: Self.udpEchoPort)
+        let big = Data((0..<1400).map { UInt8(($0 * 31 + 1) & 0xff) })
+        let variants: [NCProxy] = [
+            Self.sudokuProxy("loop-sudoku-udp-ascii", 18091, [
+                "aead-method": .string("aes-128-gcm"), "table-type": .string("prefer_ascii"),
+                "enable-pure-downlink": .bool(false), "http-mask": .bool(false),
+            ]),
+            Self.sudokuProxy("loop-sudoku-udp-dir", 18092, [
+                "aead-method": .string("none"), "table-type": .string("up_ascii_down_entropy"),
+                "custom-table": .string("xpxvvpvv"), "httpmask": .object(["disable": .bool(true)]),
+            ]),
+        ]
+        for p in variants {
+            let r = try self.sudokuUDP(p, [(echo, Self.dnsQuery), (echo, big)], expect: 2)
+            XCTAssertEqual(Set(r.map { $0.payload }), Set([Self.dnsQuery, big]), p.name)
+        }
+    }
+
+    /// A burst of 64 × 1400 B datagrams on one open association (frames coalesce into records / TCP reads both
+    /// ways), after 16 queued while the tunnel was opening (the pre-open cap).
+    func testSudokuUDPBurst() throws {
+        let p = Self.sudokuProxy("loop-sudoku-udp-burst", 18090, [:])
+        let echo = NCTarget(host: "127.0.0.1", port: Self.udpEchoPort)
+        func gram(_ i: Int) -> (NCTarget, Data) {
+            var d = Data(repeating: UInt8(i & 0xff), count: 1400)
+            d[0] = 0xb5
+            return (echo, d)
+        }
+        let r = try self.sudokuUDP(p, (0..<16).map(gram), afterFirstReply: (16..<80).map(gram), expect: 80,
+                                   timeout: 30)
+        // Loopback UDP between the official server and the echo backend may still drop a datagram under a burst.
+        XCTAssertGreaterThanOrEqual(r.count, 76, "burst: \(r.count)/80 echoed")
+        XCTAssertTrue(r.allSatisfy { $0.payload.count == 1400 && $0.payload.first == 0xb5 }, "a burst datagram was corrupted")
+        let firstSixteen = Set(r.map { Int($0.payload[1]) }).intersection(Set(0..<16))
+        XCTAssertGreaterThanOrEqual(firstSixteen.count, 15, "pre-open queue: \(firstSixteen.count)/16 echoed")
+    }
+
+    /// feat/nc-sudoku-udp-wire: with `udp: false` the node's UDP must not ride Sudoku at all.
+    /// NCDataPlane.openUDP's sudoku case is gated on `proxy.effectiveUDP`, so this flow lands
+    /// in the default drop path like any UDP-incapable policy (the data plane itself has no
+    /// in-process harness — this pins the gate predicate on an otherwise fully valid node,
+    /// against the same server parameters the echo tests above dial).
+    func testSudokuUDPDisabledByNodeFlag() throws {
+        let off = Self.sudokuProxy("loop-sudoku-udp-off", 18090, ["udp": .bool(false)])
+        XCTAssertNil(NCSupport.unsupportedReason(off), "node itself is valid")
+        XCTAssertFalse(off.effectiveUDP, "udp: false must close the data plane's Sudoku UDP case")
+        let on = Self.sudokuProxy("loop-sudoku-udp-on", 18090, [:])
+        XCTAssertTrue(on.effectiveUDP, "no flag: Sudoku UDP defaults on")
     }
 }

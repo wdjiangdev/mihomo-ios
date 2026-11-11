@@ -57,10 +57,21 @@ final class NativeCoreEngine {
     private let smartQueue = DispatchQueue(label: "nc.smart")
     private var canonicalGroupMap: [String: NCGroupModel] = [:]
     private var healthCheck: NCHealthCheckScheduler?
+    /// fix/httpdns-guard: engine-owned instance, armed per load() from
+    /// NCConfig.httpdnsGuard and read directly by the data plane (the
+    /// guard's own lock — never this engine's stateLock on that path).
+    let httpdnsGuard = NCHTTPDNSGuard()
+    private let httpdnsForwarder = NCDNSForwarder(queue: DispatchQueue(label: "nc.httpdns-guard-resolve"))
     private var home = ""
 
     private var fakeIPFile: URL {
         URL(fileURLWithPath: home).appendingPathComponent("nativecore-fakeip.json")
+    }
+
+    /// fix/httpdns-guard-persist: the guard's persisted table lives next
+    /// to the fake-IP snapshot — same home, same atomic-JSON convention.
+    private var httpdnsGuardFile: URL {
+        URL(fileURLWithPath: home).appendingPathComponent("nativecore-httpdns-guard.json")
     }
 
     /// Loads (or reloads) the config for `home`. Returns an error message or nil.
@@ -301,6 +312,24 @@ final class NativeCoreEngine {
         let hc = NCHealthCheckScheduler(engine: self)
         hc.start()
         healthCheck = hc
+        // fix/httpdns-guard: (re)arm for this config — a reload IS the
+        // config-change refresh; the service's own timer covers the
+        // 30 min cadence between reloads. Off in the overrides → the
+        // service stops and the table empties.
+        // fix/httpdns-guard-persist: point the guard at its on-disk
+        // table for THIS home before arming/disarming, so start() can
+        // restore it and setEnabled(false) can clear it.
+        httpdnsGuard.setStoreFile(httpdnsGuardFile)
+        httpdnsGuard.setEnabled(cfg.httpdnsGuard)
+        if cfg.httpdnsGuard {
+            StartupLog.write("httpdns guard: on (watching \(NCHTTPDNSGuard.watchDomains.joined(separator: ", ")))")
+            httpdnsGuard.start { [weak self] domain, completion in
+                guard let self else { completion(nil); return }
+                self.resolveGuardAddresses(domain, completion: completion)
+            }
+        } else {
+            httpdnsGuard.stop()
+        }
         Self.active = self
         return nil
     }
@@ -404,7 +433,8 @@ final class NativeCoreEngine {
         }
         return NCConfig(mode: cfg.mode, logLevel: cfg.logLevel, ipv6: cfg.ipv6,
                         proxies: proxies, groups: groups, rules: cfg.rules,
-                        dns: cfg.dns, sniffer: cfg.sniffer, raw: cfg.raw, subRules: cfg.subRules)
+                        dns: cfg.dns, sniffer: cfg.sniffer, httpdnsGuard: cfg.httpdnsGuard,
+                        raw: cfg.raw, subRules: cfg.subRules)
     }
 
     /// GET /providers/proxies (Clash.Meta shape): one entry per proxy provider with its (filtered / overridden) nodes.
@@ -470,6 +500,7 @@ final class NativeCoreEngine {
         stateLock.lock(); defer { stateLock.unlock() }
         healthCheck?.stop()
         healthCheck = nil
+        httpdnsGuard.stop()
         smartTimer?.cancel()
         smartTimer = nil
         smart = nil
@@ -744,6 +775,19 @@ final class NativeCoreEngine {
         locked { dnsPolicy }?.answerTriggersFallback(response) ?? false
     }
 
+    /// fix/dns-reject-storm: the raw text of the domain-class REJECT rule
+    /// that decides this name at the DNS layer, or nil. Evaluated with the
+    /// very same rule snapshot and injected lookups as connection routing
+    /// (`matchContext`), restricted to rules a DNS query can decide
+    /// (NCRuleMatcher.dnsRejectRule). Only meaningful in rule mode —
+    /// direct / global mode never reject by rule, mirroring routeAsyncImpl.
+    func dnsLayerRejectRule(_ host: String) -> String? {
+        let snapshot = locked { (_config != nil && effectiveMode == "rule") ? rules : [] }
+        guard !snapshot.isEmpty else { return nil }
+        let ctx = matchContext(domain: host, ip: nil, dstPort: nil, network: "udp")
+        return NCRuleMatcher.dnsRejectRule(snapshot, ctx)?.raw
+    }
+
     /// Answers a raw DNS query in fake-IP mode (A -> fake IP, AAAA -> fake
     /// v6 when a range6 is configured, else empty NOERROR). nil means the
     /// query is not fake-IP business and must be forwarded upstream by the
@@ -752,7 +796,16 @@ final class NativeCoreEngine {
         stateLock.lock(); defer { stateLock.unlock() }
         guard !redirHostMode, let pool = fakeIP else { return nil }
         if dnsResponder == nil { dnsResponder = NCFakeIPResponder(pool: pool) }
-        return dnsResponder?.respond(to: query)
+        // Re-wired on every query (cheap) so a config reload that kept the
+        // responder instance still evaluates the current rules.
+        dnsResponder?.rejectMatcher = { [weak self] host in self?.dnsLayerRejectRule(host) }
+        let outcome = dnsResponder?.respondWithOutcome(to: query) ?? (reply: nil, rejection: nil)
+        if let rejection = outcome.rejection {
+            // The block must be visible BY DOMAIN in the connection records
+            // (已拦截), not only as a failed line on the DNS page.
+            NCStatsRecorder.shared.dnsBlocked(host: rejection.host, rule: rejection.rule)
+        }
+        return outcome.reply
     }
 
     /// redir-host: remember a forwarded response's A/AAAA answers so later
@@ -952,6 +1005,49 @@ final class NativeCoreEngine {
         resolveForwarder.forward(query, upstream: upstream) { (resp: Data?) in completion(resp) }
     }
     #endif
+
+    /// fix/httpdns-guard: ALL A + AAAA addresses of a watched HTTPDNS
+    /// service name, through the kernel upstreams — dnsRoute picks the
+    /// nameserver (nameserver-policy honoured) exactly as for rule
+    /// matching, and the answer's address records already sit behind any
+    /// CNAME chain (both proven cases are CNAMEs: httpdns.baidu.com →
+    /// httpdns.n.shifen.com, httpdns.baidubce.com →
+    /// bce-httpsdns.n.shifen.com). Completion contract (the guard's
+    /// Resolver): nil = BOTH lookups failed, so the guard keeps the
+    /// name's previous addresses; a non-nil array — possibly empty — is
+    /// a completed answer and replaces them.
+    func resolveGuardAddresses(_ host0: String, completion: @escaping ([NCIP]?) -> Void) {
+        #if TERN_TUNNEL
+        let host = host0.lowercased()
+        let group = DispatchGroup()
+        var aResult: [NCIP]? = nil
+        var aaaaResult: [NCIP]? = nil
+        // Both completions run on httpdnsForwarder's serial queue, so the
+        // two result slots need no lock; the group orders the final read.
+        for (type, isA) in [(NCDNSMessage.typeA, true), (NCDNSMessage.typeAAAA, false)] {
+            var q = NCDNSMessage()
+            q.id = UInt16.random(in: 1...0xffff)
+            q.recursionDesired = true
+            q.questions = [NCDNSQuestion(name: host, type: type, klass: NCDNSMessage.classIN)]
+            let query = q.serialized()
+            guard let upstream = dnsRoute(for: query).primary else { continue }
+            group.enter()
+            httpdnsForwarder.forward(query, upstream: upstream) { resp in
+                let ips = resp.flatMap { NCDNSMessage.parse($0) }?.addressAnswers.map { $0.0 }
+                if isA { aResult = ips } else { aaaaResult = ips }
+                group.leave()
+            }
+        }
+        group.notify(queue: .global(qos: .utility)) {
+            if aResult == nil, aaaaResult == nil { completion(nil) }
+            else { completion((aResult ?? []) + (aaaaResult ?? [])) }
+        }
+        #else
+        // App target (unit-test evidence only): the engine never runs
+        // here, so every lookup reports failure and the guard stays empty.
+        completion(nil)
+        #endif
+    }
 
     private func finishResolve(_ host: String, ip: NCIP?, ttl: Double, gen: Int) {
         resolveLock.lock()

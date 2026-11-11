@@ -80,6 +80,7 @@ final class NCDataPlane {
     private var relayDirect = 0
     private var relayFailed = 0
     private var relayRejected = 0
+    private var httpdnsGuardRejected = 0 // fix/httpdns-guard: flows refused / datagrams dropped by the guard
     private var udpOpened = 0
     static let connLogPerSecond = NCDiagLimiter.perSecond
     // fix/nc-mitm-live: MitM handoff health / counters (statsLine) and the periodic fake-ip flush.
@@ -112,7 +113,7 @@ final class NCDataPlane {
     private static func outcomeHead(_ s: TCPSession) -> String {
         let rule = s.ruleText.isEmpty ? "-" : s.ruleText
         let via = s.chainName == s.policyName || s.policyName.isEmpty ? s.chainName : "\(s.policyName) (\(s.chainName))"
-        return "[TCP] \(s.target.host):\(s.target.port) rule \(rule)\(s.matchNote) → \(via)"
+        return NCFlowLogLine.head(proto: "TCP", host: s.target.host, port: s.target.port, rule: rule, matchNote: s.matchNote, via: via)
     }
 
     /// "v4 tcp 198.18.0.1 → 17.x.x.x" for the first-packet log line (addresses are the device's own flows).
@@ -138,6 +139,9 @@ final class NCDataPlane {
     private(set) var totalProxyDown: Int64 = 0
     /// Lock-protected mirror of live state for the controller (other queues).
     let stats = NCDataPlaneStats()
+    /// fix/nc-script-stats: script-issued outbound ($httpClient) counts here; refreshStats folds it
+    /// into the stats mirror. NativeTunnelCore hands this same instance to NativeScriptHost.
+    let scriptTraffic = NCScriptTrafficLedger()
     private(set) var isRunning = false
 
     // rv2-life (#10) back-pressure / memory caps. lwIP's own send buffer per connection is TCP_SND_BUF (16 × 1460 =
@@ -336,7 +340,7 @@ final class NCDataPlane {
     }
 
     var statsLine: String {
-        "native: packets in \(packetsIn), out \(packetsOut), tcp accepted \(tcpAccepted), sessions \(sessions.count), dns queries \(dnsQueries), dns replies \(dnsReplies), dns no-upstream \(dnsNoUpstream), dns failed \(dnsForwardFailed), udp dropped \(udpDropped), relay ok \(relayOK), direct \(relayDirect), relay failed \(relayFailed), rejected \(relayRejected), udp opened \(udpOpened), mitm decrypted \(mitmDecrypted), mitm passthrough \(mitmPassthrough), mitm fallback \(mitmFallbacks)\(mitmFrontDown ? " (front DOWN)" : ""), fake-ip unmapped reset \(fakeUnmappedReset), dns servfail \(dnsServfail); \(stack.cStatsLine)"
+        "native: packets in \(packetsIn), out \(packetsOut), tcp accepted \(tcpAccepted), sessions \(sessions.count), dns queries \(dnsQueries), dns replies \(dnsReplies), dns no-upstream \(dnsNoUpstream), dns failed \(dnsForwardFailed), udp dropped \(udpDropped), relay ok \(relayOK), direct \(relayDirect), relay failed \(relayFailed), rejected \(relayRejected), udp opened \(udpOpened), mitm decrypted \(mitmDecrypted), mitm passthrough \(mitmPassthrough), mitm fallback \(mitmFallbacks)\(mitmFrontDown ? " (front DOWN)" : ""), fake-ip unmapped reset \(fakeUnmappedReset), dns servfail \(dnsServfail), httpdns guard rejected \(httpdnsGuardRejected); \(stack.cStatsLine)"
     }
 
     // MARK: Packet flow
@@ -482,6 +486,24 @@ final class NCDataPlane {
         if fakeDomain == nil, let ip = conn.dst.ip, engine.isFakeAddress(ip) {
             fakeUnmappedReset &+= 1
             connLog("[TCP] \(conn.dst.host):\(conn.dst.port) refused: fake-ip without a domain mapping — RST right after the handshake, the app re-resolves", level: "warning")
+            return false
+        }
+        // fix/httpdns-guard: a bare-IP destination that is a watched
+        // HTTPDNS service address — the app resolved it through its own
+        // HTTPDNS, outside the user's DNS policy (no query for the DNS
+        // layer, no domain for the matcher, usually no SNI either).
+        // Refused at accept like the unmapped fake IP above (RST right
+        // after the handshake); the record names the HTTPDNS domain so
+        // the blocked page shows WHO was bypassing, not just an IP.
+        // Fake-IP destinations are excluded by construction: a fake
+        // address is the tunnel's own DNS answer, never an HTTPDNS
+        // endpoint (and the guard table only holds real upstream answers).
+        if let ip = conn.dst.ip, !engine.isFakeAddress(ip),
+           let domain = engine.httpdnsGuard.domain(for: ip) {
+            httpdnsGuardRejected &+= 1
+            connLog("[TCP] \(conn.dst.host):\(conn.dst.port) rejected: HTTPDNS guard (\(domain))", level: "warning")
+            NCStatsRecorder.shared.guardBlocked(host: domain, rule: NCHTTPDNSGuard.ruleText(for: domain),
+                                                dstIP: conn.dst.host, dstPort: conn.dst.port, network: "tcp")
             return false
         }
         let s = TCPSession(conn: conn, target: derefed, ruleDomain: fakeDomain)
@@ -994,6 +1016,9 @@ final class NCDataPlane {
         }
         stats.update(connections: conns, up: totalUp, down: totalDown,
                      proxyUp: totalProxyUp, proxyDown: totalProxyDown)
+        // fix/nc-script-stats: fold the script ledger in on the same tick cadence.
+        let sc = scriptTraffic.snapshot()
+        stats.updateScript(connections: sc.connections, up: sc.up, down: sc.down)
         // fix/nc-e2e-gaps: /app/stats — per-policy / per-host growth since the last tick, and one speed point
         // (TUN + local mixed proxy totals).
         var batch: [(policy: String, host: String, up: Int64, down: Int64)] = []
@@ -1169,6 +1194,8 @@ final class NCDataPlane {
         if info.dst.port == 53 {
             dnsQueries &+= 1
             if let reply = engine.dnsHostsReply(data) ?? engine.handleDNSQuery(data) {
+                // fix/nc-dns-log-lines: answered locally (hosts / fake-ip / cache) — the card's cache bucket.
+                dnsLogCacheHit(data, reply: reply)
                 // nc-script-runtime: registered type=dns scripts may rewrite the finished reply before
                 // it is written back (async, on the hook queue; fail-open). No dns scripts: direct send.
                 if engine.hasDNSScripts {
@@ -1220,6 +1247,7 @@ final class NCDataPlane {
         let deliver: (Data) -> Void = { [weak self] resp in
             guard let self else { return }
             self.dnsReplies &+= 1
+            self.dnsLogResolve(query, response: resp, upstream: trace.winner ?? primary.label)
             if !self.loggedFirstDNSReply {
                 self.loggedFirstDNSReply = true
                 StartupLog.write("data plane: first upstream DNS reply delivered (\(resp.count) B)")
@@ -1294,22 +1322,51 @@ final class NCDataPlane {
         connLog(line, level: "warning")
     }
 
-    static func dnsFailureLine(_ query: Data, trace: NCDNSAttemptTrace) -> String {
+    /// (name, type) of a query's first question, as printed by every [DNS] line.
+    static func dnsNameType(_ query: Data) -> (name: String, type: String) {
         let q = NCDNSMessage.parse(query)?.questions.first
-        let name = q?.name ?? "?"
         let t = q?.type ?? 0
-        let type: String
         switch t {
-        case 1: type = "A"
-        case 28: type = "AAAA"
-        case 65: type = "HTTPS"
-        case 5: type = "CNAME"
-        case 12: type = "PTR"
-        case 16: type = "TXT"
-        case 33: type = "SRV"
-        default: type = q == nil ? "?" : "type \(t)"
+        case 1: return (q?.name ?? "?", "A")
+        case 28: return (q?.name ?? "?", "AAAA")
+        case 65: return (q?.name ?? "?", "HTTPS")
+        case 5: return (q?.name ?? "?", "CNAME")
+        case 12: return (q?.name ?? "?", "PTR")
+        case 16: return (q?.name ?? "?", "TXT")
+        case 33: return (q?.name ?? "?", "SRV")
+        default: return (q?.name ?? "?", q == nil ? "?" : "TYPE\(t)") // spaceless: log-line fields are \S+ tokens
         }
-        return "[DNS] \(name) \(type) failed (SERVFAIL to client): \(trace.summary)"
+    }
+
+    /// The failure line takes the canonical NCDNSLogLine format both log consumers parse
+    /// (the old "(SERVFAIL to client)" wording matched nothing, so failures were invisible
+    /// there too); the attempt trace stays as the detail.
+    static func dnsFailureLine(_ query: Data, trace: NCDNSAttemptTrace) -> String {
+        let (name, type) = dnsNameType(query)
+        return NCDNSLogLine.failure(name: name, type: type, detail: trace.summary)
+    }
+
+    /// One canonical DNS line into the controller log ring — what the Home DNS card and
+    /// the DNS log page aggregate. Written straight to the ring, not through the 20/s
+    /// flow-diagnostics limiter: natural query rates are the same order as the connection
+    /// lines the ring already rolls through.
+    private func dnsLogResolve(_ query: Data, response: Data, upstream: String) {
+        let (name, type) = Self.dnsNameType(query)
+        let line = NCDNSLogLine.resolve(name: name, type: type, response: NCDNSMessage.parse(response), upstream: upstream)
+        NativeLogRing.shared.add(type: "info", payload: line)
+    }
+
+    private func dnsLogCacheHit(_ query: Data, reply: Data) {
+        let (name, type) = Self.dnsNameType(query)
+        let parsed = NCDNSMessage.parse(reply)
+        // fix/dns-reject-storm: an NXDOMAIN out of the local answer path is the
+        // DNS-layer reject (the hosts path never sets an rcode) — file it as a
+        // rejected query, not as a cache hit, so the DNS page can tell blocked
+        // names apart from answered ones.
+        let line = parsed?.rcode == 3
+            ? NCDNSLogLine.rejected(name: name, type: type)
+            : NCDNSLogLine.cacheHit(name: name, type: type, response: parsed)
+        NativeLogRing.shared.add(type: "info", payload: line)
     }
 
     /// fix/nc-tcp0: every upstream failed — answer SERVFAIL (Clash.Meta's DNS server does) instead of dropping the query;
@@ -1329,7 +1386,14 @@ final class NCDataPlane {
     }
 
     /// fix/nc-open-6-10 #9: a UDP session ended — its last bytes and a closed-connection record (network udp).
+    /// fix/nc-udp-close-log: mirror the close into the core log with the TCP close line's shape. UDP bytes
+    /// were previously visible only in the app's request list: every diagnostics export showed QUIC sessions
+    /// as "opened" with no fate, which left the Xiaohongshu-cover investigation blind on exactly the flows
+    /// it needed (build 545/546 exports, 2026-10-28). One line per session close is far under the diag
+    /// limiter's burst budget.
     private func recordUDPClosed(_ id: UInt32, _ e: UDPSessionEntry) {
+        let secs = Int(Date().timeIntervalSince(e.openedAt))
+        connLog("[UDP] \(e.host):\(e.dstPort) closed after \(secs) s, up \(e.up) B, down \(e.down) B")
         let rec = NCStatsRecorder.shared
         rec.bytes(policy: e.policy, host: e.host, up: e.up - e.statsUp, down: e.down - e.statsDown)
         e.statsUp = e.up
@@ -1346,6 +1410,23 @@ final class NCDataPlane {
     private var udpPending: [UInt32: [Data]] = [:]
 
     private func udpForward(_ info: NCTunStack.UDPSessionInfo, _ data: Data) {
+        // fix/httpdns-guard: datagrams to a watched HTTPDNS service
+        // address (the app resolving through its own HTTPDNS, outside
+        // the user's DNS policy) are dropped before any session work;
+        // the record names the HTTPDNS domain. Checked before the
+        // session table on purpose: a guard address can never own a
+        // session, and a refresh that starts covering an existing
+        // flow's address cuts that flow off here instead of letting
+        // the established session sail on.
+        if let ip = info.dst.ip, !engine.isFakeAddress(ip),
+           let domain = engine.httpdnsGuard.domain(for: ip) {
+            httpdnsGuardRejected &+= 1
+            udpDropped += 1
+            connLog("[UDP] \(info.dst.host):\(info.dst.port) dropped: HTTPDNS guard (\(domain))", level: "warning")
+            NCStatsRecorder.shared.guardBlocked(host: domain, rule: NCHTTPDNSGuard.ruleText(for: domain),
+                                                dstIP: info.dst.host, dstPort: info.dst.port, network: "udp")
+            return
+        }
         if let entry = udpSessions[info.id] {
             entry.lastUsed = Date()
             countUDP(entry, up: data.count)
@@ -1389,7 +1470,7 @@ final class NCDataPlane {
             }
             let opened = self.udpSessions[info.id] != nil
             if opened { self.udpOpened &+= 1 }
-            self.connLog("[UDP] \(target.host):\(target.port) rule \(ruleText ?? "-") → \(via) \(opened ? "opened" : "dropped (no UDP relay for this policy)")",
+            self.connLog(NCFlowLogLine.udpOutcome(host: target.host, port: target.port, rule: ruleText ?? "-", via: via, opened: opened),
                          level: opened ? "info" : "warning")
         }
     }
@@ -1512,6 +1593,16 @@ final class NCDataPlane {
                 return
             }
             session = sn
+        case .proxy(let proxy) where proxy.type == "sudoku" && proxy.effectiveUDP:
+            // feat/nc-sudoku-udp: UoT inside the Sudoku tunnel (KIP StartUoT), one tunnel per flow like the
+            // official client / Clash.Meta. feat/nc-sudoku-udp-wire: Sudoku defaults to UDP on
+            // (NCProxy.effectiveUDP); an explicit udp: false falls through to the default drop
+            // below — the same path every UDP-incapable policy takes.
+            guard NCSupport.sudokuUnsupported(proxy) == nil else {
+                udpDropped += 1
+                return
+            }
+            session = NCSudokuUDPSession(proxy: proxy, queue: queue)
         case .proxy(let proxy) where proxy.type == "brook":
             // feat/nc-brook: packets / udp-over-tcp / ws(s) stream / quic datagram or stream (NCBrookUDP.swift).
             guard let br = NCUDPBrook.make(proxy: proxy, target: target, queue: queue) else {
@@ -1547,6 +1638,11 @@ final class NCDataPlane {
             // silently dropping every further reply
             if !self.stack.udpSend(session: sid, payload) { self.udpGone(sid) }
         }
+        // fix/nc-udp-direct-ready: a direct session whose connection failed tears the whole
+        // session down, so the flow's next datagram re-opens instead of black-holing.
+        if let direct = session as? NCUDPDirectSession {
+            direct.onDead = { [weak self] in self?.udpGone(sid) }
+        }
         udpSessions[info.id] = entry
         for p in packets { countUDP(entry, up: p.count); session.send(p, to: target) }
     }
@@ -1581,13 +1677,26 @@ final class NCDataPlaneStats {
         lock.unlock()
     }
 
+    /// fix/nc-script-stats: the script ledger's mirror (written by the data plane's refresh tick);
+    /// snapshot() reports TUN + local proxy + script. Script bytes carry no proxy split (the ledger
+    /// does not know the chain a script request resolved to), so proxyUp / proxyDown are untouched.
+    private var script: (connections: [[String: Any]], up: Int64, down: Int64) = ([], 0, 0)
+
+    func updateScript(connections: [[String: Any]], up: Int64, down: Int64) {
+        lock.lock()
+        script = (connections, up, down)
+        lock.unlock()
+    }
+
     func snapshot() -> (connections: [[String: Any]], up: Int64, down: Int64, proxyUp: Int64, proxyDown: Int64) {
         lock.lock()
         defer { lock.unlock() }
-        if local.connections.isEmpty && local.up == 0 && local.down == 0 {
+        if local.connections.isEmpty && local.up == 0 && local.down == 0
+            && script.connections.isEmpty && script.up == 0 && script.down == 0 {
             return (connections, up, down, proxyUp, proxyDown)
         }
-        return (connections + local.connections, up + local.up, down + local.down,
+        return (connections + local.connections + script.connections,
+                up + local.up + script.up, down + local.down + script.down,
                 proxyUp + local.proxyUp, proxyDown + local.proxyDown)
     }
 }

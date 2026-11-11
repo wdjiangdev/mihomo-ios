@@ -40,7 +40,7 @@ enum ImportTools {
         if !profilePath.isEmpty {
             let selected = (profilePath as NSString).deletingPathExtension + ".selected.json"
             for side in [profilePath + ".bak", profilePath + ".gen", selected, profilePath + ".source.conf",
-                         profilePath + ".pre-yaml-fix", profilePath + ".yaml-fix-checked"] {
+                         profilePath + ".pre-yaml-fix", profilePath + ".yaml-fix-checked"] + TernConfStore.sideFiles(profilePath) {
                 try? FileManager.default.removeItem(atPath: side)
             }
         }
@@ -250,6 +250,12 @@ enum ImportTools {
         // bytes (cut at a line end); only the cheap substring checks for a YAML profile see the whole text.
         let t = classifyHead(full)
         if isQXConf(t) {
+            return "conf"
+        }
+        // feat/nc-egern-disabled-import (#169): an Egern *configuration* (top-level
+        // proxies: / policy_groups:) converts through the config importer, not the
+        // module path — its disabled entries map onto the v0.20.2 mechanisms.
+        if NCEgernImport.isConfig(t) {
             return "conf"
         }
         if NCEngineRuleset.isEgern(t) {
