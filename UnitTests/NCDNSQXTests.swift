@@ -194,7 +194,7 @@ final class NCDNSQXTests: XCTestCase {
         NCSystemDNS.exchange(query("sys.example", type: 16)) { txt = $0; e3.fulfill() }
         wait(for: [e1, e2, e3], timeout: 3)
         XCTAssertEqual(ips(a), ["203.0.113.9"])
-        XCTAssertEqual(ips(aaaa), ["2001:db8::9"])
+        XCTAssertEqual(ips(aaaa), [NCIP("2001:db8::9")!.string])
         XCTAssertNil(txt, "only A / AAAA can be asked through getaddrinfo")
     }
 
@@ -235,7 +235,7 @@ final class NCDNSQXTests: XCTestCase {
         XCTAssertEqual(ips(out.reply), ["127.0.0.1"])
         XCTAssertEqual(a.answers.first?.ttl, 10)
         let six = r.respond(to: query("ad.example.com", type: NCDNSMessage.typeAAAA))
-        XCTAssertEqual(ips(six), ["::1"])
+        XCTAssertEqual(ips(six), [NCIP("::1")!.string]) // NCIP.string prints v6 uncompressed
         XCTAssertTrue(NCDNSRejectBehavior.isRejectReply(out.reply!))
         XCTAssertTrue(NCDNSRejectBehavior.isRejectReply(six!))
         XCTAssertEqual(NCDNSLogLine.rejected(name: "ad.example.com", type: "A", reply: out.reply!),
