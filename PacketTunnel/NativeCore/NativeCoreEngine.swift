@@ -46,6 +46,9 @@ final class NativeCoreEngine {
         locked { ruleProviders }?.isLoaded(name: name) ?? false
     }
     private var dnsPolicy: NCDNSPolicy?
+    /// fix/qx-dns-records: QX dns_reject_domain_behavior and `no-ipv6` of the running config.
+    private var dnsRejectBehavior: NCDNSRejectBehavior = .default
+    private var dnsIPv6 = true
     private var nodeSubStore: NCNodeSubscriptionStore?
     private var nodeSubs: [NCNodeSubscription] = []
     /// Base config merged with provider nodes, rebuilt with the group engine (was recomputed — every provider
@@ -155,7 +158,7 @@ final class NativeCoreEngine {
         var addr = ip
         if addr == nil, let d = domain?.lowercased() {
             resolveLock.lock()
-            addr = resolveCache[d]?.ip
+            addr = resolveCache.entries[d]?.ip
             resolveLock.unlock()
         }
         guard let a = addr else { return "dst IP unknown (domain-only match)" }
@@ -276,10 +279,17 @@ final class NativeCoreEngine {
         if let geo { policy.geositeContains = { cat, name in geo.matches(payload: cat, domain: name) } }
         policy.ruleSetContainsDomain = { name, domain in store.containsDomain(name: name, domain: domain) }
         dnsPolicy = policy
+        // fix/qx-dns-records: QX DNS switches (see NCDNSQX.swift).
+        dnsRejectBehavior = cfg.dns.rejectBehavior
+            ?? NCDNSRejectBehavior(raw: cfg.raw["dns_reject_domain_behavior"]?.string) ?? .default
+        dnsIPv6 = cfg.dns.ipv6
+        NCDNSForwarder.circumvent = cfg.dns.circumvent
+        NCSystemDNS.fakeRanges = ([cfg.dns.fakeIPRange, cfg.dns.fakeIPRange6].compactMap { $0 } + ["198.18.0.0/15"])
+            .compactMap { NCCIDR($0) }
         // nc-lifecycle: a new resolve generation — lookups still in flight
         // from the previous config complete their waiters, but their answers
         // may no longer enter the cache (fetched under the old DNS policy).
-        resolveLock.lock(); resolveCache = [:]; resolveGeneration += 1; resolveLock.unlock()
+        resolveLock.lock(); resolveCache.removeAll(); resolveGeneration += 1; resolveLock.unlock()
         echResolver.clearCache()
         #if TERN_TUNNEL
         // ech-rest: dynamic ech-opts (enable without config) — NCConnector.dialNativeTLS asks this engine's
@@ -513,7 +523,7 @@ final class NativeCoreEngine {
         // their own queues from here.
         resolveLock.lock()
         resolveGeneration += 1
-        resolveCache = [:]
+        resolveCache.removeAll()
         let stranded = resolveWaiters.values.flatMap { $0 }
         resolveWaiters = [:]
         resolveLock.unlock()
@@ -730,13 +740,20 @@ final class NativeCoreEngine {
         // fix/nc-start-empty: nameserver first; when it holds nothing forwardable (only system / dhcp), the
         // bootstrap lists instead of dropping every query.
         guard let dns = config?.dns else { return nil }
-        return NCDNSUpstream.firstUsable([dns.nameservers, dns.defaultNameservers, dns.proxyServerNameservers])
+        // fix/qx-dns-records: a `system` entry (QX: the network's DNS, always on unless no-system) joins the race.
+        return NCDNSUpstream.withSystem(
+            NCDNSUpstream.firstUsable([dns.nameservers, dns.defaultNameservers, dns.proxyServerNameservers]),
+            nameservers: dns.nameservers)
     }
 
     /// Hosts-table answer for a query, if any (checked before fake-IP:
     /// a [Host] entry wins over the fake pool in all three reference apps).
     func dnsHostsReply(_ query: Data) -> Data? {
-        locked { dnsPolicy }?.hostsReply(queryData: query)
+        let (policy, ipv6) = locked { (dnsPolicy, dnsIPv6) }
+        if let r = policy?.hostsReply(queryData: query) { return r }
+        // fix/qx-dns-records: QX `no-ipv6` — "the DNS module … will directly let the AAAA query fail": answered
+        // here (NOERROR, no data) instead of reaching the fake pool or an upstream.
+        return ipv6 ? nil : NCDNSPolicy.noIPv6Reply(queryData: query)
     }
 
     /// Full DNS routing for a forwarded query (Clash.Meta dns.fallback /
@@ -799,6 +816,7 @@ final class NativeCoreEngine {
         // Re-wired on every query (cheap) so a config reload that kept the
         // responder instance still evaluates the current rules.
         dnsResponder?.rejectMatcher = { [weak self] host in self?.dnsLayerRejectRule(host) }
+        dnsResponder?.rejectBehavior = dnsRejectBehavior
         let outcome = dnsResponder?.respondWithOutcome(to: query) ?? (reply: nil, rejection: nil)
         if let rejection = outcome.rejection {
             // The block must be visible BY DOMAIN in the connection records
@@ -914,7 +932,8 @@ final class NativeCoreEngine {
 
     private let resolveForwarder = NCDNSForwarder(queue: DispatchQueue(label: "nc.rule-resolve"))
     private let resolveLock = NSLock()
-    private var resolveCache: [String: (ip: NCIP?, expires: Date)] = [:]
+    /// fix/qx-dns-records: TTL cache with QX's serve-stale (NCResolveCache).
+    private var resolveCache = NCResolveCache()
     private var resolveWaiters: [String: [(NCIP?) -> Void]] = [:]
     /// Bumped on every load and on stop (under resolveLock): finishResolve
     /// only caches answers from the current generation.
@@ -930,8 +949,10 @@ final class NativeCoreEngine {
     /// One A lookup for rule matching (AAAA when the answer has no A and
     /// ipv6 is on is not attempted — Clash.Meta prefers v4 too). Hosts first,
     /// then the upstreams dnsRoute picks (nameserver-policy honoured);
-    /// identical in-flight lookups share one query; answers cached (TTL
-    /// clamped 60–600 s, failures 30 s), at most 512 names.
+    /// identical in-flight lookups share one query.
+    /// fix/qx-dns-records (QX semantics): answers are cached by their TTL (10 s – 1 h, failures 30 s, 512 names); an
+    /// EXPIRED answer is still used at once while a refresh runs (QX TF 643); every upstream lookup made here is
+    /// written to the DNS log marked as the rule-matching phase (QX TF 718 / 749), failures included.
     func resolveHost(_ host0: String, completion: @escaping (NCIP?) -> Void) {
         let host = host0.lowercased()
         if let ip = NCIP(host) { completion(ip); return }
@@ -940,12 +961,22 @@ final class NativeCoreEngine {
             completion(ips.first(where: { $0.isV4 }) ?? ips.first)
             return
         }
-        let now = Date()
         resolveLock.lock()
-        if let c = resolveCache[host], c.expires > now {
+        switch resolveCache.lookup(host) {
+        case .fresh(let ip):
             resolveLock.unlock()
-            completion(c.ip)
+            completion(ip)
             return
+        case .stale(let ip):
+            let refresh = resolveWaiters[host] == nil
+            if refresh { resolveWaiters[host] = [] }
+            let gen = resolveGeneration
+            resolveLock.unlock()
+            completion(ip)
+            if refresh { startRuleLookup(host, gen: gen, stale: true) }
+            return
+        case .miss:
+            break
         }
         if resolveWaiters[host] != nil {
             if resolveWaiters[host]!.count < 64 { resolveWaiters[host]!.append(completion) }
@@ -955,6 +986,11 @@ final class NativeCoreEngine {
         resolveWaiters[host] = [completion]
         let gen = resolveGeneration
         resolveLock.unlock()
+        startRuleLookup(host, gen: gen, stale: false)
+    }
+
+    /// The upstream half of resolveHost: one A query through dnsRoute's primary, logged, then finishResolve.
+    private func startRuleLookup(_ host: String, gen: Int, stale: Bool) {
         var q = NCDNSMessage()
         q.id = UInt16.random(in: 1...0xffff)
         q.recursionDesired = true
@@ -965,15 +1001,25 @@ final class NativeCoreEngine {
             return
         }
         #if TERN_TUNNEL
-        resolveForwarder.forward(query, upstream: upstream) { [weak self] (resp: Data?) in
-            let answers = resp.flatMap { NCDNSMessage.parse($0) }?.addressAnswers ?? []
+        let trace = NCDNSAttemptTrace()
+        resolveForwarder.forward(query, upstream: upstream, trace: trace) { [weak self] (resp: Data?) in
+            let parsed = resp.flatMap { NCDNSMessage.parse($0) }
+            let answers = parsed?.addressAnswers ?? []
             let hit = answers.first(where: { $0.0.isV4 }) ?? answers.first
-            self?.finishResolve(host, ip: hit?.0, ttl: hit.map { min(max(Double($0.1), 60), 600) } ?? 30, gen: gen)
+            if let parsed {
+                NativeLogRing.shared.add(type: "info", payload: NCDNSLogLine.ruleResolve(
+                    name: host, type: "A", response: parsed, upstream: trace.winner ?? upstream.label, stale: stale))
+            } else {
+                NativeLogRing.shared.add(type: "warning", payload: NCDNSLogLine.failure(
+                    name: host, type: "A", detail: "分流匹配阶段：\(trace.summary)"))
+            }
+            self?.finishResolve(host, ip: hit?.0, ttl: hit.map { Double($0.1) } ?? 30, gen: gen)
         }
         #else
         // App target (unit-test evidence only): NCDNSForwarder.forward(_:upstream:) lives in the
         // tunnel-only NCUDPSessions.swift. The app never starts the engine, so resolve misses here.
         _ = upstream
+        _ = stale
         finishResolve(host, ip: nil, ttl: 30, gen: gen)
         #endif
     }
@@ -982,6 +1028,14 @@ final class NativeCoreEngine {
     func flushDNSCache() {
         resolveLock.lock()
         resolveCache.removeAll()
+        resolveLock.unlock()
+    }
+
+    /// fix/qx-dns-records: a network change marks every cached rule-matching answer expired instead of clearing it
+    /// (QX TF 643): the next connection still matches with the old answer while a fresh query runs.
+    func markDNSCacheStale() {
+        resolveLock.lock()
+        resolveCache.markAllExpired()
         resolveLock.unlock()
     }
 
@@ -1055,12 +1109,7 @@ final class NativeCoreEngine {
         // previous config (or before stop) still completes its waiters — the
         // flows that asked — but must not seed the new config's cache.
         if gen == resolveGeneration {
-            if resolveCache.count >= 512 {
-                let now = Date()
-                resolveCache = resolveCache.filter { $0.value.expires > now }
-                if resolveCache.count >= 512 { resolveCache.removeAll() }
-            }
-            resolveCache[host] = (ip, Date().addingTimeInterval(ttl))
+            resolveCache.store(host, ip: ip, ttl: ttl)
         }
         let waiters = resolveWaiters.removeValue(forKey: host) ?? []
         resolveLock.unlock()

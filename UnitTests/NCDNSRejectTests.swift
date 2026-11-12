@@ -138,7 +138,10 @@ final class NCDNSRejectTests: XCTestCase {
     }
 
     func testBlockedNameGetsNXDOMAIN() {
+        // fix/qx-dns-records: NXDOMAIN is now the explicit `dns_reject_domain_behavior = nxdomain`
+        // (QX's default is loopback, see NCDNSQXTests).
         let (r, pool) = responder(blocking: ["afd.baidu.com"])
+        r.rejectBehavior = .nxdomain
         let resp = NCDNSMessage.parse(r.respond(to: query(name: "afd.baidu.com"))!)
         XCTAssertEqual(resp?.rcode, 3)
         XCTAssertEqual(resp?.answers.count, 0)
@@ -148,6 +151,7 @@ final class NCDNSRejectTests: XCTestCase {
 
     func testBlockedNameAAAAAlsoNXDOMAIN() {
         let (r, _) = responder(blocking: ["afd.baidu.com"])
+        r.rejectBehavior = .nxdomain
         let resp = NCDNSMessage.parse(r.respond(to: query(name: "afd.baidu.com", type: NCDNSMessage.typeAAAA))!)
         XCTAssertEqual(resp?.rcode, 3)
         XCTAssertTrue(resp?.answers.isEmpty ?? false)

@@ -59023,36 +59023,36 @@
         }
       }
     },
-    "断开后，App 会经由新选的节点或模式重新连接；关闭则已有连接保持原来的节点直到结束。Wi-Fi 与蜂窝网络切换或换了 Wi-Fi 时清空 DNS 缓存，避免沿用上一个网络的解析结果。": {
+    "断开后，App 会经由新选的节点或模式重新连接；关闭则已有连接保持原来的节点直到结束。Wi-Fi 与蜂窝网络切换或换了 Wi-Fi 时把 DNS 缓存标记为过期（与 Quantumult X 相同）：过期结果先用于连接，同时重新查询，新结果到了就替换。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Closed connections reconnect through the new node or mode; with this off, open connections keep their old node until they end. Clearing the DNS cache when switching between Wi-Fi and cellular or to another Wi-Fi avoids reusing answers from the previous network."
+            "value": "Closed connections reconnect through the new node or mode; with this off, open connections keep their old node until they end. When switching between Wi-Fi and cellular or to another Wi-Fi, the DNS cache is marked expired (as in Quantumult X): an expired answer is still used to connect while a fresh query runs, and the new answer replaces it."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "切断すると、アプリは新しいノードやモードで再接続します。オフの場合、既存の接続は終了するまで元のノードを使います。Wi-Fi とモバイル通信の切り替えや別の Wi-Fi への接続時に DNS キャッシュを消去し、前のネットワークの名前解決結果を使い回さないようにします。"
+            "value": "切断すると、アプリは新しいノードやモードで再接続します。オフの場合、既存の接続は終了するまで元のノードを使います。Wi-Fi とモバイル通信の切り替えや別の Wi-Fi への接続時に DNS キャッシュを期限切れにします（Quantumult X と同じ）：期限切れの結果でまず接続しつつ再クエリし、新しい結果が届いたら置き換えます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "끊으면 앱이 새 노드나 모드로 다시 연결합니다. 끄면 기존 연결은 끝날 때까지 원래 노드를 씁니다. Wi-Fi와 셀룰러 간 전환이나 다른 Wi-Fi로 바뀔 때 DNS 캐시를 지워 이전 네트워크의 조회 결과를 다시 쓰지 않습니다."
+            "value": "끊으면 앱이 새 노드나 모드로 다시 연결합니다. 끄면 기존 연결은 끝날 때까지 원래 노드를 씁니다. Wi-Fi와 셀룰러 간 전환이나 다른 Wi-Fi로 바뀔 때 DNS 캐시를 만료 처리합니다(Quantumult X와 동일): 만료된 결과로 먼저 연결하면서 다시 조회하고, 새 결과가 오면 교체합니다."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Закрытые соединения переподключаются через новый узел или режим; если выключено, открытые соединения сохраняют старый узел до завершения. Очистка кэша DNS при переходе между Wi-Fi и сотовой сетью или на другую Wi-Fi не даёт использовать ответы прежней сети."
+            "value": "Закрытые соединения переподключаются через новый узел или режим; если выключено, открытые соединения сохраняют старый узел до завершения. При переходе между Wi-Fi и сотовой сетью или на другую Wi-Fi кэш DNS помечается устаревшим (как в Quantumult X): устаревший ответ используется для подключения, пока идёт новый запрос, а затем заменяется новым."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "斷開後，App 會經由新選的節點或模式重新連線；關閉則已有連線保持原來的節點直到結束。Wi-Fi 與蜂窩網路切換或換了 Wi-Fi 時清空 DNS 快取，避免沿用上一個網路的解析結果。"
+            "value": "斷開後，App 會經由新選的節點或模式重新連線；關閉則已有連線保持原來的節點直到結束。Wi-Fi 與蜂窩網路切換或換了 Wi-Fi 時把 DNS 快取標記為過期（與 Quantumult X 相同）：過期結果先用於連線，同時重新查詢，新結果到了就替換。"
           }
         }
       }
@@ -85091,36 +85091,36 @@
         }
       }
     },
-    "网络变化时清空 DNS 缓存": {
+    "网络变化时让 DNS 缓存过期": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Clear DNS cache on network change"
+            "value": "Expire DNS cache on network change"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ネットワーク変更時に DNS キャッシュを消去"
+            "value": "ネットワーク変更時に DNS キャッシュを期限切れにする"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "네트워크 변경 시 DNS 캐시 지우기"
+            "value": "네트워크 변경 시 DNS 캐시 만료 처리"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Очищать кэш DNS при смене сети"
+            "value": "Помечать кэш DNS устаревшим при смене сети"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "網路變化時清空 DNS 快取"
+            "value": "網路變化時讓 DNS 快取過期"
           }
         }
       }

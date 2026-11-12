@@ -180,6 +180,8 @@ final class NCFakeIPResponder {
     /// backstop for IP-direct / HTTPDNS flows). Nil closure = feature off,
     /// every query takes the classic fake-IP path.
     var rejectMatcher: ((String) -> String?)?
+    /// fix/qx-dns-records: how a rejected name is answered (QX dns_reject_domain_behavior; set by the engine).
+    var rejectBehavior: NCDNSRejectBehavior = .default
 
     init(pool: NCFakeIPPool) { self.pool = pool }
 
@@ -207,9 +209,11 @@ final class NCFakeIPResponder {
         // Only A / AAAA are ever answered locally; other types keep the
         // forward-upstream behavior (nil), REJECT-ruled or not.
         guard q.type == NCDNSMessage.typeA || q.type == NCDNSMessage.typeAAAA else { return (nil, nil) }
-        if let rejectMatcher, let rule = rejectMatcher(host) {
-            resp.rcode = 3 // NXDOMAIN, no answers, no fake IP allocated
-            return (resp.serialized(), (host, rule))
+        // fix/qx-dns-records: answered per QX dns_reject_domain_behavior (default loopback 127.0.0.1 / ::1,
+        // TTL 10); `.none` turns the DNS-level rejection off and the name gets its fake IP like any other.
+        if rejectBehavior != NCDNSRejectBehavior.none, let rejectMatcher, let rule = rejectMatcher(host),
+           let reply = rejectBehavior.reply(to: query) {
+            return (reply, (host, rule)) // no fake IP allocated
         }
         switch q.type {
         case NCDNSMessage.typeA:
@@ -281,6 +285,26 @@ enum NCDNSLogLine {
     /// from a locally answered "cache hit" line.
     static func rejected(name: String, type: String) -> String {
         failure(name: name, type: type, detail: "NXDOMAIN (REJECT rule)")
+    }
+
+    /// fix/qx-dns-records: the reject line for whichever dns_reject_domain_behavior answered it (same
+    /// `resolve … error:` grammar, so both consumers keep filing it as a blocked query).
+    static func rejected(name: String, type: String, behavior: NCDNSRejectBehavior) -> String {
+        failure(name: name, type: type, detail: "\(behavior.logDetail) (REJECT rule)")
+    }
+
+    /// fix/qx-dns-records: the reject line for an already built local reply (the data plane does not know which
+    /// behaviour produced it): NXDOMAIN / loopback / NODATA read back from the wire.
+    static func rejected(name: String, type: String, reply: Data) -> String {
+        let msg = NCDNSMessage.parse(reply)
+        let b: NCDNSRejectBehavior = msg?.rcode == 3 ? .nxdomain : ((msg?.answers.isEmpty ?? true) ? .noErrorNoAnswer : .loopback)
+        return b == .nxdomain ? rejected(name: name, type: type) : rejected(name: name, type: type, behavior: b)
+    }
+
+    /// fix/qx-dns-records: a rule-matching lookup's result (QX TF 718/749 mark DNS queries triggered while
+    /// evaluating rules); same grammar as `resolve`, the upstream column says it was the rule phase.
+    static func ruleResolve(name: String, type: String, response: NCDNSMessage?, upstream: String, stale: Bool) -> String {
+        resolve(name: name, type: type, response: response, upstream: upstream + (stale ? " (分流, 过期缓存)" : " (分流)"))
     }
 
     /// "[93.184.216.34 2001:db8::1]" for address answers; a CNAME target when that is

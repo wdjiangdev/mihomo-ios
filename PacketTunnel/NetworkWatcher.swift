@@ -141,8 +141,10 @@ final class NetworkWatcher {
             NCDNSDoHPool.shared.dropIdle()
             // v0.19 网络变化时清空 DNS 缓存 (更多 → 内核设置, on by default).
             if self.flushDNS {
-                NativeTunnelCore.shared.flushDNSCache()
-                StartupLog.write("network changed (\(type)): DNS cache cleared")
+                // fix/qx-dns-records: QX marks every cached answer expired on a network change and keeps using it
+                // while a fresh query runs (TF 643) — no longer a hard clear.
+                NativeTunnelCore.shared.markDNSCacheStale()
+                StartupLog.write("network changed (\(type)): DNS cache marked expired")
             }
             let msg = NativeTunnelCore.shared.setNetworkState(type: type, ssid: ssid)
             if !msg.isEmpty { StartupLog.write(msg) }

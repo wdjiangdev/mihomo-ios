@@ -67,7 +67,9 @@ final class NativeCoreDNSPolicyTests: XCTestCase {
         XCTAssertEqual(NCDNSUpstream.parse("1.2.3.4:5353"), .udp(host: "1.2.3.4", port: 5353))
         XCTAssertEqual(NCDNSUpstream(NCDNSServerRef.parse("https://dns.google/dns-query")),
                        .doh(url: "https://dns.google/dns-query"))
-        XCTAssertNil(NCDNSUpstream(NCDNSServerRef.parse("system")))
+        // fix/qx-dns-records: `system` (QX `server=/d/system`) is now the network resolver upstream; dhcp stays unmapped.
+        XCTAssertEqual(NCDNSUpstream(NCDNSServerRef.parse("system")), .system)
+        XCTAssertNil(NCDNSUpstream(NCDNSServerRef.parse("dhcp://en0")))
     }
 
     // rv2-rules: IPv6 upstreams, comma / geosite / rule-set / regexp policy keys, dual-stack hosts.

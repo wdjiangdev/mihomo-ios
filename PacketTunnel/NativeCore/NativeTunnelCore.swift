@@ -521,6 +521,8 @@ final class NativeTunnelCore {
     /// FlushDNSCache (network change, $httpAPI): the rule-matching resolver cache — answers cached on the
     /// old network would keep IP rules matching stale addresses. The fake-IP pool must survive (fix/nc-e2e-real).
     func flushDNSCache() { engine?.flushDNSCache() }
+    /// fix/qx-dns-records: network change — expire, don't clear (QX TF 643).
+    func markDNSCacheStale() { engine?.markDNSCacheStale() }
 
     /// NotifyNetworkChanged: infoJSON becomes $network; every enabled network-changed event script runs
     /// (gap C3, NativeTaskRunner). Returns how many were started.
