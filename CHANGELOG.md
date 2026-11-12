@@ -8,6 +8,12 @@
 - **DNS 层拦截默认改为 QX 的 loopback**：被 REJECT 规则拦截的域名返回 127.0.0.1 / ::1（TTL 10），以前返回 NXDOMAIN；QX 配置的 `dns_reject_domain_behavior`（loopback / no-error-no-answer / nxdomain / none）会被导入并生效，DNS 日志按实际方式标注拦截。
 - **分流匹配用的 DNS 缓存按 QX 处理**：按应答 TTL 缓存（10 秒 – 1 小时），过期结果先用于匹配、同时后台重新查询；网络变化时把缓存标记为过期而不是清空（设置项改名为「网络变化时让 DNS 缓存过期」）。分流匹配阶段发起的查询也写入 DNS 日志。
 - **分流 / 拦截 / DNS 记录持久化**：扩展被系统终止后 30 分钟内自动重连会接着上次的连接记录、DNS 记录和统计（规则命中、策略 / 主机流量、速度历史），统计每 60 秒、休眠和断开时存盘；新连接开始时保留最近两次连接的记录文件；单个记录文件上限从 256 MB 降到 32 MB，DNS 历史一次最多返回最新 1 万条。
+- **百度地图开屏广告：内置 Quantumult X 同款拦截**（真机反馈：build 569 上每次冷启动都有开屏，同一配置在 QX 下没有）。「更多 → 高级设置 → HTTPDNS 守卫」开关（默认开）现在同时负责：
+  - DNS 层拒绝 `afd.baidu.com`、`afdconf.baidu.com`、`lc.map.baidu.com`、`httpdns.baidu.com`、`httpdns.baidubce.com`；
+  - HTTPDNS 守卫内置百度 HTTPDNS 的固定入口 IP（180.76.76.112 / .200 / .220，百度智能云文档与社区规则），SDK 直接连 IP 时也会被拒绝，App 退回系统 DNS；之前守卫只解析域名，拿到的 IP 与 SDK 实际连接的不同，从未生效；
+  - 开启重写与 HTTPS 解密且证书已信任时，额外加入内置重写（同 QX：`newclient.map.baidu.com` 的 `qt=ads` 开屏配置 reject-dict，crossmarketing / usersystem/home/dynamic / noticebar / qt=bar|hw 拒绝；MitM 主机名含 `163.177.17.*` 等 IP），排在用户自己的规则之后；证书未信任时只做 DNS / IP 层，不会解密百度地图。
+  - 这些拦截都会出现在「已拦截」里（规则显示为 `HTTPDNS-GUARD,…` / `DOMAIN,…,REJECT` / `URL-REWRITE,…`）。百度地图会缓存开屏计划，升级后可能需要冷启动 2–3 次才完全消失。
+- HTTPDNS 守卫：隧道停止时不再删除已保存的解析表（只有关闭开关才删除），被系统回收后重新启动从第一条连接起就生效。
 
 ## v0.20.2（NativeCore 预览版，预发布）
 

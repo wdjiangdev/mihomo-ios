@@ -1577,6 +1577,19 @@ final class TernUITests: TernUITestCase {
         XCTAssertTrue(flush.exists, "flush DNS switch")
         XCTAssertEqual(switchValue(close), "1", "on by default")
         XCTAssertEqual(switchValue(flush), "1", "on by default")
+        // fix/baidumap-splash: the HTTPDNS guard switch (now also the built-in Baidu Maps splash protection, said in
+        // its caption) is on by default.
+        let guardSwitch = app.switches["settings.httpdnsGuard"]
+        if scrollTo(guardSwitch, fail: false) {
+            XCTAssertEqual(switchValue(guardSwitch), "1", "HTTPDNS 守卫 on by default")
+            let baidu = NSPredicate(format: "label CONTAINS %@ OR label CONTAINS[c] %@", "百度地图", "Baidu")
+            XCTAssertTrue(guardSwitch.label.contains("百度地图") || guardSwitch.label.localizedCaseInsensitiveContains("Baidu")
+                          || app.staticTexts.containing(baidu).firstMatch.exists,
+                          "caption names the Baidu Maps protection: \(guardSwitch.label)")
+            snap("settings-httpdns-guard")
+        } else {
+            XCTFail("HTTPDNS 守卫 switch")
+        }
         toggleSwitch(flush)
         usleep(1_500_000)
         snap("settings-connection")

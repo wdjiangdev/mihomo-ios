@@ -416,6 +416,23 @@ final class NativeCoreMASQUETests: XCTestCase {
         XCTAssertEqual(res4, "/masque?h=1.1.1.1&p=53")
     }
 
+    func testConnectUDPAuthorityComesFromURITemplate() throws {
+        // Kit shape (zhiheng MASQUE-UDP node): the node dials an IP literal, but the URI template
+        // carries the proxy hostname. masque-go validates the Extended CONNECT :authority against
+        // its URI template and answers 400 on mismatch, so the authority used for CONNECT-UDP must
+        // be the URI host — the same derivation CONNECT-IP already uses — not `server:port`.
+        let p = NCProxy(name: "kit-masque-udp", type: "masque", fields: [
+            "server": .string("45.92.159.155"), "port": .number(24040),
+            "mode": .string("connect-udp"),
+            "username": .string("tern"), "password": .string("tern"),
+            "uri": .string("https://tern.test:24040/.well-known/masque/udp/{target_host}/{target_port}/"),
+            "sni": .string("tern.test"), "udp": .bool(true), "skip-cert-verify": .bool(true),
+        ])
+        let cfg = try XCTUnwrap(NCMASQUE.Config(proxy: p))
+        XCTAssertEqual(cfg.mode, .connectUDP)
+        XCTAssertEqual(NCMASQUE.connectIPRequestTarget(cfg).authority, "tern.test:24040")
+    }
+
     func testCredentialNodeIsConnectUDPAndTCPIsRefused() {
         let p = NCProxy(name: "surge-masque", type: "masque", fields: [
             "server": .string("masque.example.com"), "port": .number(443),

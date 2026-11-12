@@ -142,6 +142,9 @@ enum SettingsSearchIndex {
         e("controller", "外部控制器", [more, "高级设置", "内核设置"], "antenna.radiowaves.left.and.right", .neutral, .coreSettings,
           ["控制器", "external controller", "API", "secret", "dashboard", "面板", "yacd", "metacubexd", "9090"]),
         e("sniffer", "域名嗅探（Sniffer）", [more, "高级设置", "内核设置"], "eye", .neutral, .coreSettings, ["嗅探", "sniffer", "SNI", "sniff"]),
+        // fix/baidumap-splash: the HTTPDNS guard switch also carries the built-in Baidu Maps splash protection.
+        e("httpdnsGuard", "HTTPDNS 守卫", [more, "高级设置", "内核设置"], "shield.lefthalf.filled", .neutral, .coreSettings,
+          ["HTTPDNS", "百度地图", "开屏", "开屏广告", "百度", "baidu", "baidu maps", "splash", "splash ad", "httpdns guard"]),
         e("speedTestSettings", "测速设置", adv, "bolt.horizontal", .orange, .speedTestSettings,
           ["测速", "延迟", "测速地址", "超时", "直连测试地址", "TCP 握手延迟", "TCP", "handshake", "url-test", "latency", "delay", "ping", "test url", "timeout"]),
         e("geoChecker", "出口信息来源", adv, "mappin.and.ellipse", .pink, .geoChecker,

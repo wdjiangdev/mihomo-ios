@@ -332,7 +332,7 @@ final class NativeCoreEngine {
         httpdnsGuard.setStoreFile(httpdnsGuardFile)
         httpdnsGuard.setEnabled(cfg.httpdnsGuard)
         if cfg.httpdnsGuard {
-            StartupLog.write("httpdns guard: on (watching \(NCHTTPDNSGuard.watchDomains.joined(separator: ", ")))")
+            StartupLog.write("httpdns guard: on (watching \(NCHTTPDNSGuard.watchDomains.joined(separator: ", ")); fixed \(NCHTTPDNSGuard.seedIPs.keys.sorted().joined(separator: ", ")))")
             httpdnsGuard.start { [weak self] domain, completion in
                 guard let self else { completion(nil); return }
                 self.resolveGuardAddresses(domain, completion: completion)
@@ -510,6 +510,8 @@ final class NativeCoreEngine {
         stateLock.lock(); defer { stateLock.unlock() }
         healthCheck?.stop()
         healthCheck = nil
+        // fix/baidumap-splash: stop() disarms in memory only — the persisted
+        // table survives a tunnel stop (only an explicit off deletes it).
         httpdnsGuard.stop()
         smartTimer?.cancel()
         smartTimer = nil

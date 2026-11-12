@@ -101,7 +101,7 @@ jobs:
       scheme: TernUITests
 
   build-e2e:
-    if: github.repository == 'wdjiangdev/mihomo-ios' && !inputs.prebuilt && ((!inputs.jobs || contains(inputs.jobs, 'openconnect')) || (!inputs.jobs || contains(inputs.jobs, 'masque-ip')) || (!inputs.jobs || contains(inputs.jobs, 'wireguard')) || contains(inputs.jobs, 'masque-warp') || contains(inputs.jobs, 'wireguard-zh') || contains(inputs.jobs, 'juicity-zh') || contains(inputs.jobs, 'juicity-lb') || contains(inputs.jobs, 'ss-obfs-zh'))
+    if: github.repository == 'wdjiangdev/mihomo-ios' && !inputs.prebuilt && ((!inputs.jobs || contains(inputs.jobs, 'openconnect')) || (!inputs.jobs || contains(inputs.jobs, 'masque-ip')) || (!inputs.jobs || contains(inputs.jobs, 'wireguard')) || contains(inputs.jobs, 'masque-warp') || contains(inputs.jobs, 'wireguard-zh') || contains(inputs.jobs, 'juicity-zh') || contains(inputs.jobs, 'juicity-lb') || contains(inputs.jobs, 'ss-obfs-zh') || contains(inputs.jobs, 'proto5-zh'))
     uses: ./.github/workflows/build-for-testing.yml
     with:
       ref: ${{ inputs.ref }}
@@ -621,6 +621,55 @@ jobs:
           name: ss-obfs-zh-interop-results
           path: |
             results/ss-obfs-zh.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  proto5-zh:
+    needs: build-e2e
+    if: ${{ !cancelled() && github.repository == 'wdjiangdev/mihomo-ios' && contains(inputs.jobs, 'proto5-zh') && (needs.build-e2e.result == 'success' || (inputs.prebuilt && needs.build-e2e.result == 'skipped')) }}
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ./.github/actions/tern-prebuilt
+        with:
+          scheme: TernE2E
+          xcode: ${{ inputs.xcode_e2e || needs.build-e2e.outputs.xcode }}
+      - name: Disable Thread Performance Checker
+        run: python3 scripts/ci/strip-tpc.py "$XCTESTRUN"
+      - name: Run proto5 interop tests (real zhiheng kit servers, OpenConnect 24036 / MASQUE 24039-24040)
+        run: |
+          set +e
+          xcrun simctl bootstatus "$DEV" -b
+          mkdir -p results
+          TEST_RUNNER_JSC_useJIT=false \
+          TEST_RUNNER_NC_PROTO5_ZH=1 \
+          TEST_RUNNER_NC_OC_SERVER=45.92.159.155 \
+          TEST_RUNNER_NC_OC_PORT=24036 \
+          TEST_RUNNER_NC_OC_USER='terndpa3' \
+          TEST_RUNNER_NC_OC_PASS='yeCsUwsFbAhUYMUgdeiC' \
+          xcodebuild -xctestrun "$XCTESTRUN" -destination "id=$DEV" -resultBundlePath results/proto5-zh.xcresult \
+            -only-testing:TernE2ETunnelTests/NCProto5ZhihengInteropTests test-without-building 2>&1 | tee results/proto5-zh.log \
+            | grep -E "Test Case .*(failed|passed|skipped)|error:|XCTAssert|Executed|proto5-zh"
+          RC=${PIPESTATUS[0]}
+          [ "$RC" = 0 ] || tail -n 150 results/proto5-zh.log
+          if grep -q "skipped" results/proto5-zh.log && ! grep -q "passed" results/proto5-zh.log; then RC=1; echo "::error::all proto5 zhiheng tests skipped"; fi
+          {
+            echo "### proto5 interop (real zhiheng kit servers: OpenConnect / MASQUE-IP / MASQUE-UDP)"
+            grep -E "Executed [0-9]+ tests?" results/proto5-zh.log | tail -n 1 | sed 's/^/- /'
+            grep -E "Test Case .*(passed|failed)" results/proto5-zh.log | sed -E 's/.*-\[[^ ]+ ([^]]+)\]. (passed|failed).*/- \1: \2/'
+            grep -E "proto5-zh" results/proto5-zh.log | sed 's/^/- /'
+            echo "- exit $RC"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$RC"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: proto5-zh-interop-results
+          path: |
+            results/proto5-zh.log
           if-no-files-found: warn
           retention-days: 14
 

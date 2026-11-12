@@ -99,6 +99,9 @@ final class NCOpenConnectSession {
     var onStateChange: ((NCOpenConnectChannelState) -> Void)?
 
     private var accumulatedCookies: [String: String] = [:]
+    /// Credential fields already sent in the current auth exchange (staged-auth tracking:
+    /// a server may ask for the username and the password in two separate forms).
+    private var sentAuthFields: Set<String> = []
     private var authStream: NCStream?
     private var cstpStream: NCStream?
     private var isClosed = false
@@ -173,6 +176,7 @@ final class NCOpenConnectSession {
 
     private func startAuth(gen: Int, completion: @escaping (Result<NCOpenConnectTunnel, Error>) -> Void) {
         updateState(.authenticating)
+        sentAuthFields = []
         let stream = NCStream(to: config.server, port: config.port,
                               tlsServerName: config.sni,
                               allowInsecure: config.skipCertVerify,
@@ -275,8 +279,16 @@ final class NCOpenConnectSession {
         }
 
         if let authResp = authResp, authResp.type == .authRequest {
-            // A second form after the password (OTP, new-password, …) cannot be answered from a static node.
-            if round > 1, authResp.inputs["password"] != nil || authResp.inputs.isEmpty {
+            // Staged authentication (ocserv ≤ 1.1.x): the server may ask for the username first and
+            // the password in a follow-up form — answer any form that asks for a credential we have
+            // not sent yet. Refuse only a form we cannot fill, or one re-asking for credentials
+            // already sent (wrong password, OTP, new-password, …): a static node cannot answer those.
+            var answerable: Set<String> = []
+            if let g = config.authGroup, !g.isEmpty { answerable.insert("group_list") }
+            if let u = config.username, !u.isEmpty { answerable.insert("username") }
+            if let p = config.password, !p.isEmpty { answerable.insert("password") }
+            guard NCOpenConnect.authFieldsToSend(inputs: authResp.inputs, answerable: answerable,
+                                                 alreadySent: sentAuthFields) != nil else {
                 let desc = authResp.error ?? authResp.message ?? "服务端再次要求输入凭据"
                 completion(.failure(NCOpenConnectError.authenticationFailed(desc)))
                 return
@@ -296,6 +308,7 @@ final class NCOpenConnectSession {
                 postFields.append(("password", p))
             }
 
+            sentAuthFields.formUnion(postFields.map { $0.0 })
             let formBody = NCOpenConnect.buildFormURLEncoded(fields: postFields)
             var cookieList: [String] = []
             for (ck, cv) in accumulatedCookies.sorted(by: { $0.key < $1.key }) { cookieList.append("\(ck)=\(cv)") }

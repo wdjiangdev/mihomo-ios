@@ -559,7 +559,17 @@ struct SettingsView: View {
                     Text("调试").tag("debug")
                 }
                 Toggle("域名嗅探（Sniffer）", isOn: $o.sniffer)
-                Toggle("HTTPDNS 守卫", isOn: $o.httpdnsGuard)
+                // fix/baidumap-splash: the switch also carries the built-in Baidu Maps splash protection
+                // (NCBaiduMapSplash) — said under the title so turning it off is an informed choice.
+                Toggle(isOn: $o.httpdnsGuard) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("HTTPDNS 守卫")
+                        Text("含百度地图开屏广告拦截；其中 HTTPS 部分需开启重写与 HTTPS 解密，并信任证书")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityIdentifier("settings.httpdnsGuard")
             } header: { Text("内核") } footer: {
                 Text("这些选项会覆盖配置文件里的同名字段。DNS 模式在「工具 → DNS」中设置，IPv6 与局域网共享在「更多 → 高级设置 → 连接方式」中设置。")
             }
