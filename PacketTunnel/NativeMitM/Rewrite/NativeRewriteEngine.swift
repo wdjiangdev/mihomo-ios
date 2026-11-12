@@ -484,6 +484,11 @@ final class NativeRewriteEngine {
                 var wh = lh
                 wh.del("Content-Encoding"); wh.del("Transfer-Encoding"); wh.set("Content-Length", String(body.count))
                 log.headers = wh.sortedPairs
+                // fix/baidumap-splash: a rewrite REJECT of a built-in Baidu Maps target is a block the user should
+                // see in 已拦截 (like the DNS-layer and HTTPDNS-guard blocks), with a readable rule text.
+                if let rule = NCBaiduMapSplash.blockRule(url: u) {
+                    NCStatsRecorder.shared.rewriteBlocked(host: urlHost, rule: rule, tls: q.tls)
+                }
                 return NativeRewriteEngine.logged(NativeRewriteEngine.writeLocal(status: status, header: lh, body: body), log, body)
             case "302", "307":
                 guard rule.snap.targetOK == true, let re = rule.re else {

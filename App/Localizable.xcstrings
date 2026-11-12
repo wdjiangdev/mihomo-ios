@@ -5836,6 +5836,40 @@
         }
       }
     },
+    "HTTPDNS 守卫": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPDNS Guard"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPDNS ガード"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPDNS 가드"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Защита от HTTPDNS"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPDNS 守衛"
+          }
+        }
+      }
+    },
     "HTTPS 解密": {
       "localizations": {
         "en": {
@@ -35204,6 +35238,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "含 body"
+          }
+        }
+      }
+    },
+    "含百度地图开屏广告拦截；其中 HTTPS 部分需开启重写与 HTTPS 解密，并信任证书": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Includes blocking Baidu Maps splash ads; the HTTPS part needs Rewrite and HTTPS Decryption on and the certificate trusted"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "百度地図の起動時広告のブロックを含みます。HTTPS 部分には書き換えと HTTPS 復号をオンにし、証明書を信頼する必要があります"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "바이두 지도 시작 광고 차단 포함. HTTPS 부분은 재작성과 HTTPS 복호화를 켜고 인증서를 신뢰해야 합니다"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Включает блокировку заставки Baidu Maps; для HTTPS-части нужны включённые перезапись и расшифровка HTTPS и доверенный сертификат"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "含百度地圖開屏廣告攔截；其中 HTTPS 部分需開啟重寫與 HTTPS 解密，並信任證書"
           }
         }
       }
