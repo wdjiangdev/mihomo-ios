@@ -5836,6 +5836,40 @@
         }
       }
     },
+    "HTTPDNS 守卫": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPDNS Guard"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPDNS ガード"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPDNS 가드"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Защита от HTTPDNS"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTPDNS 守衛"
+          }
+        }
+      }
+    },
     "HTTPS 解密": {
       "localizations": {
         "en": {
