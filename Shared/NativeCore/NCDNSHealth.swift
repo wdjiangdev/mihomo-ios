@@ -105,6 +105,7 @@ enum NCDNSHealth {
         case .doh: return "DoH"
         case .doq: return "DoQ"
         case .group: return "—"
+        case .system: return "System" // #224 added .system; parse("system") is nil so targets() never yields it — exhaustiveness only
         }
     }
 
