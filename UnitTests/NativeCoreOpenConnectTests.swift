@@ -357,6 +357,70 @@ final class NativeCoreOpenConnectTests: XCTestCase {
         XCTAssertEqual(errorParsed.error, "Invalid username or password")
     }
 
+    func testStagedAuthFormsAreAnsweredOnceEach() {
+        // ocserv 1.1.6 (zhiheng kit server) stages plain auth: the init response asks ONLY for the
+        // username, the follow-up form asks ONLY for the password. Both shapes are live captures
+        // (message text, form action, single input) with the kit's public test values removed.
+        let usernameFormXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <config-auth client="vpn" type="auth-request">
+            <version who="sg">0.1(1)</version>
+            <auth id="main">
+                <message>Please enter your username.</message>
+                <form action="/auth" method="post">
+                    <input label="Username:" name="username" type="text" />
+                </form>
+            </auth>
+        </config-auth>
+        """
+        let passwordFormXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <config-auth client="vpn" type="auth-request">
+            <version who="sg">0.1(1)</version>
+            <auth id="main">
+                <message>Please enter your password.</message>
+                <form action="/auth" method="post">
+                    <input label="Password:" name="password" type="password" />
+                </form>
+            </auth>
+        </config-auth>
+        """
+        let usernameForm = NCOpenConnect.AuthResponse.parse(xmlString: usernameFormXML)
+        let passwordForm = NCOpenConnect.AuthResponse.parse(xmlString: passwordFormXML)
+        XCTAssertEqual(usernameForm?.inputs, ["username": "text"])
+        XCTAssertEqual(passwordForm?.inputs, ["password": "password"])
+
+        let answerable: Set<String> = ["username", "password"]
+
+        // Staged flow: username form first, password form second — both must be answered.
+        var sent: Set<String> = []
+        let step1 = NCOpenConnect.authFieldsToSend(inputs: usernameForm!.inputs, answerable: answerable, alreadySent: sent)
+        XCTAssertEqual(step1, ["username"])
+        sent.formUnion(step1!)
+        let step2 = NCOpenConnect.authFieldsToSend(inputs: passwordForm!.inputs, answerable: answerable, alreadySent: sent)
+        XCTAssertEqual(step2, ["password"])
+        sent.formUnion(step2!)
+
+        // The password asked a second time (wrong credential / second factor) is refused.
+        XCTAssertNil(NCOpenConnect.authFieldsToSend(inputs: passwordForm!.inputs, answerable: answerable, alreadySent: sent))
+
+        // Combined form in one round (newer ocserv / ASA shape) is answered in a single reply.
+        let combined: [String: String] = ["username": "text", "password": "password"]
+        XCTAssertEqual(NCOpenConnect.authFieldsToSend(inputs: combined, answerable: answerable, alreadySent: []),
+                       ["username", "password"])
+        XCTAssertNil(NCOpenConnect.authFieldsToSend(inputs: combined, answerable: answerable, alreadySent: sent))
+
+        // Forms a static node cannot fill are refused: OTP-only and empty.
+        XCTAssertNil(NCOpenConnect.authFieldsToSend(inputs: ["otp": "text"], answerable: answerable, alreadySent: []))
+        XCTAssertNil(NCOpenConnect.authFieldsToSend(inputs: [:], answerable: answerable, alreadySent: []))
+
+        // A group-only stage is answerable when an auth-group is configured.
+        XCTAssertEqual(NCOpenConnect.authFieldsToSend(inputs: ["group_list": "select"],
+                                                      answerable: ["group_list", "username", "password"],
+                                                      alreadySent: []),
+                       ["group_list"])
+    }
+
     func testHTTPMessageParserWithCookiesAndHeaders() {
         let rawHTTP = [
             "HTTP/1.1 200 OK",
