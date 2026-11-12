@@ -62,6 +62,9 @@ final class NativeCoreEngine {
     /// guard's own lock — never this engine's stateLock on that path).
     let httpdnsGuard = NCHTTPDNSGuard()
     private let httpdnsForwarder = NCDNSForwarder(queue: DispatchQueue(label: "nc.httpdns-guard-resolve"))
+    /// feat/egern-2-21: DNS upstream health (Egern 2.21). Tunnel only — the engine is also built into the app for unit
+    /// tests, and those must not start a probe loop. Own forwarder and queue; never touches the query path.
+    private var dnsHealth: NCDNSHealthMonitor?
     private var home = ""
 
     private var fakeIPFile: URL {
@@ -330,6 +333,7 @@ final class NativeCoreEngine {
         } else {
             httpdnsGuard.stop()
         }
+        configureDNSHealth(cfg)
         Self.active = self
         return nil
     }
@@ -500,6 +504,7 @@ final class NativeCoreEngine {
         stateLock.lock(); defer { stateLock.unlock() }
         healthCheck?.stop()
         healthCheck = nil
+        dnsHealth?.stop()
         httpdnsGuard.stop()
         smartTimer?.cancel()
         smartTimer = nil
@@ -722,6 +727,23 @@ final class NativeCoreEngine {
         stateLock.lock(); defer { stateLock.unlock() }
         guard let groups else { return .direct }
         return groups.resolve(policy(for: ctx))
+    }
+
+    /// feat/egern-2-21: (re)arm the DNS upstream health monitor for this config's nameserver / fallback /
+    /// default-nameserver (writes <home>/dns-health.json, notifies on failure). Extension only.
+    private func configureDNSHealth(_ cfg: NCConfig) {
+        guard AppShared.isExtension else { return }
+        let dns = cfg.dns
+        let targets = NCDNSHealth.targets(nameservers: dns.nameservers, fallback: dns.fallbackServers,
+                                          bootstrap: dns.defaultNameservers)
+        if dnsHealth == nil {
+            let fwd = NCDNSForwarder(queue: DispatchQueue(label: "nc.dns-health-probe"))
+            dnsHealth = NCDNSHealthMonitor(home: URL(fileURLWithPath: home)) { query, upstream, done in
+                fwd.forward(query, upstream: upstream, completion: done)
+            }
+        }
+        dnsHealth?.start(targets)
+        StartupLog.write("dns health: \(targets.count) upstream(s) every \(Int(NCDNSHealth.interval)) s")
     }
 
     /// Every configured nameserver (plain UDP, tcp://, tls:// DoT,

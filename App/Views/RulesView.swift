@@ -559,6 +559,10 @@ struct RuleKind: Identifiable, Hashable {
         RuleKind(id: "GEOIP", group: .ip, caption: String(localized: "IP 所属的国家或地区代码"), placeholder: "CN", isIP: true),
         RuleKind(id: "PROCESS-NAME", group: .other, caption: String(localized: "发起连接的进程名"), placeholder: "Telegram"),
         RuleKind(id: "DST-PORT", group: .other, caption: String(localized: "目标端口"), placeholder: "443", keyboard: .numberPad),
+        // feat/egern-2-21 (Egern 2.21 SRC-IP rules): the device that opened the connection — on iOS that is a device
+        // using 局域网共享 / the hotspot through Tern's HTTP / SOCKS proxy.
+        RuleKind(id: "SRC-IP-CIDR", group: .other, caption: String(localized: "来源 IP：通过局域网共享连入的设备地址或网段"),
+                 placeholder: "192.168.1.0/24", keyboard: .numbersAndPunctuation),
         RuleKind(id: "NETWORK", group: .other, caption: String(localized: "网络类型：tcp 或 udp"), placeholder: "udp"),
         RuleKind(id: "RULE-SET", group: .other, caption: String(localized: "远程规则列表（Surge / QX / Clash 格式）"), placeholder: "https://example.com/rules.list", keyboard: .URL),
         RuleKind(id: "MATCH", group: .other, caption: String(localized: "其余所有连接（最后一条）"), placeholder: "", noValue: true),
@@ -576,6 +580,7 @@ struct RuleKind: Identifiable, Hashable {
     static let aliases: [String: String] = [
         "HOST": "DOMAIN", "HOST-SUFFIX": "DOMAIN-SUFFIX", "HOST-KEYWORD": "DOMAIN-KEYWORD", "HOST-REGEX": "DOMAIN-REGEX",
         "IP6-CIDR": "IP-CIDR6", "IP-CIDR6": "IP-CIDR6", "FINAL": "MATCH", "PROCESS": "PROCESS-NAME", "DEST-PORT": "DST-PORT",
+        "SRC-IP": "SRC-IP-CIDR", "SRC-IP-CIDR6": "SRC-IP-CIDR", "SRC-IP6-CIDR": "SRC-IP-CIDR",
     ]
 }
 

@@ -109134,6 +109134,997 @@
           }
         }
       }
+    },
+    "出站节点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outbound Node"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信ノード"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아웃바운드 노드"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Исходящий узел"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出站節點"
+          }
+        }
+      }
+    },
+    "服务器地区": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server region"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーの地域"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 지역"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Регион сервера"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "伺服器地區"
+          }
+        }
+      }
+    },
+    "地区（按名称推断）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Region (inferred from name)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "地域（名前から推定）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "지역(이름으로 추정)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Регион (по названию)"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "地區（按名稱推斷）"
+          }
+        }
+      }
+    },
+    "链路": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chain"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チェーン"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "체인"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Цепочка"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "鏈路"
+          }
+        }
+      }
+    },
+    "服务器地区和 ASN 来自本机的 GeoIP / ASN 数据库，不向外部服务查询。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server region and ASN come from the GeoIP / ASN databases on this device; no outside service is asked."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーの地域と ASN はこの端末の GeoIP / ASN データベースから取得し、外部サービスには問い合わせません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 지역과 ASN은 이 기기의 GeoIP / ASN 데이터베이스에서 가져오며 외부 서비스에 조회하지 않습니다."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Регион сервера и ASN берутся из баз GeoIP / ASN на устройстве; внешние сервисы не запрашиваются."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "伺服器地區和 ASN 來自本機的 GeoIP / ASN 資料庫，不向外部服務查詢。"
+          }
+        }
+      }
+    },
+    "服务器是域名，App 不自行解析，所以没有服务器地区。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server is a domain name. The app does not resolve it itself, so there is no server region."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーはドメイン名です。App 自身では解決しないため、サーバーの地域はありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버가 도메인 이름입니다. 앱이 직접 확인하지 않으므로 서버 지역이 없습니다."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сервер задан доменным именем. Приложение само его не разрешает, поэтому региона сервера нет."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "伺服器是域名，App 不自行解析，所以沒有伺服器地區。"
+          }
+        }
+      }
+    },
+    "还没有 GeoIP 数据库（更多 → 地理数据库）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No GeoIP database yet (More → Geo Databases)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GeoIP データベースがまだありません（その他 → 地理データベース）。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 GeoIP 데이터베이스가 없습니다(더보기 → 지리 데이터베이스)."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Базы GeoIP пока нет (Ещё → Геобазы)."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "還沒有 GeoIP 資料庫（更多 → 地理資料庫）。"
+          }
+        }
+      }
+    },
+    "这个节点在「工具 → 流媒体解锁」里检测过之后，这里会显示它的出口位置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Once this node has been checked in Tools → Streaming unlock, its exit location shows here."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「ツール → ストリーミング解除」でこのノードを検査すると、ここに出口の位置が表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "'도구 → 스트리밍 잠금 해제'에서 이 노드를 검사하면 여기에 출구 위치가 표시됩니다."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "После проверки этого узла в «Инструменты → Доступ к стримингу» здесь появится его точка выхода."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這個節點在「工具 → 流媒體解鎖」裡檢測過之後，這裡會顯示它的出口位置。"
+          }
+        }
+      }
+    },
+    "上游状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upstream Status"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上流の状態"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "업스트림 상태"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Состояние серверов DNS"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上游狀態"
+          }
+        }
+      }
+    },
+    "「%@」连续 2 次没有正常回复，域名解析可能变慢或失败。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” failed to answer twice in a row. Name resolution may be slow or fail."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」が 2 回連続で正常に応答しませんでした。名前解決が遅くなるか失敗する可能性があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”이(가) 2회 연속 정상적으로 응답하지 않았습니다. 이름 확인이 느려지거나 실패할 수 있습니다."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«%@» дважды подряд не ответил. Разрешение имён может замедлиться или не работать."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」連續 2 次沒有正常回復，域名解析可能變慢或失敗。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "%lld 个 DNS 上游连续 2 次没有正常回复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld DNS upstreams failed to answer twice in a row."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 個の DNS 上流が 2 回連続で正常に応答しませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS 업스트림 %lld개가 2회 연속 정상적으로 응답하지 않았습니다."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS-серверов, дважды подряд не ответивших: %lld."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 個 DNS 上游連續 2 次沒有正常回復。"
+          }
+        }
+      }
+    },
+    "%@ 等 %@ 个 DNS 上游连续 2 次没有正常回复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ and others (%2$@ DNS upstreams) failed to answer twice in a row."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ など %2$@ 個の DNS 上流が 2 回連続で正常に応答しませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 등 DNS 업스트림 %2$@개가 2회 연속 정상적으로 응답하지 않았습니다."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ и другие (DNS-серверов: %2$@) дважды подряд не ответили."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 等 %@ 個 DNS 上游連續 2 次沒有正常回復。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "连接 VPN 后每 60 秒检测一次。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checked every 60 seconds while the VPN is connected."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN 接続中は 60 秒ごとに検査します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN이 연결되어 있으면 60초마다 검사합니다."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверяется каждые 60 секунд, пока VPN подключён."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連線 VPN 後每 60 秒檢測一次。"
+          }
+        }
+      }
+    },
+    "每 %lld 秒向每个上游查询一次 %@，连续 2 次失败算异常。上次检测：%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each upstream is asked for %2$@ every %1$lld seconds; two failures in a row count as a failure. Last check: %3$@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld 秒ごとに各上流へ %2$@ を問い合わせ、2 回連続で失敗すると異常とみなします。前回の検査：%3$@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld초마다 각 업스트림에 %2$@을(를) 조회하며 2회 연속 실패하면 이상으로 봅니다. 마지막 검사: %3$@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Каждые %1$lld с каждому серверу отправляется запрос %2$@; два сбоя подряд считаются неисправностью. Последняя проверка: %3$@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每 %lld 秒向每個上游查詢一次 %@，連續 2 次失敗算異常。上次檢測：%@"
+          }
+        }
+      }
+    },
+    "主 DNS": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Primary DNS"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メイン DNS"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "기본 DNS"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Основной DNS"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主 DNS"
+          }
+        }
+      }
+    },
+    "回落 DNS": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fallback DNS"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フォールバック DNS"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "폴백 DNS"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Резервный DNS"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回落 DNS"
+          }
+        }
+      }
+    },
+    "引导 DNS": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bootstrap DNS"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ブートストラップ DNS"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "부트스트랩 DNS"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Загрузочный DNS"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "引導 DNS"
+          }
+        }
+      }
+    },
+    "较慢 %lld ms": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slow %lld ms"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "遅い %lld ms"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "느림 %lld ms"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Медленно %lld мс"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "較慢 %lld ms"
+          }
+        }
+      }
+    },
+    "异常": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failing"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "異常"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이상"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сбой"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "異常"
+          }
+        }
+      }
+    },
+    "未回复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No answer"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "応答なし"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "응답 없음"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет ответа"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未回覆"
+          }
+        }
+      }
+    },
+    "等待检测": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "検査待ち"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "검사 대기"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ожидание"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待檢測"
+          }
+        }
+      }
+    },
+    "无响应": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No response"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "応答なし"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "응답 없음"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет ответа"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無響應"
+          }
+        }
+      }
+    },
+    "回复无效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid reply"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無効な応答"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "잘못된 응답"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Неверный ответ"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回覆無效"
+          }
+        }
+      }
+    },
+    "DNS 上游异常": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS Upstream Failure"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS 上流の異常"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS 업스트림 이상"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сбой DNS-сервера"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS 上游異常"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Tailscale 需要登录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale Login Required"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale のログインが必要"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 로그인 필요"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нужен вход в Tailscale"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 需要登入"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Tailscale 节点需要在浏览器里登录或重新授权时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When a Tailscale node needs a browser login or re-authorization"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale ノードがブラウザでのログインや再認証を必要とするとき"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 노드가 브라우저 로그인이나 재인증이 필요할 때"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда узлу Tailscale нужен вход через браузер или повторная авторизация"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 節點需要在瀏覽器裡登入或重新授權時"
+          }
+        }
+      }
+    },
+    "「%@」需要登录 Tailscale，打开 Tern 完成登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” needs a Tailscale login. Open Tern to sign in."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」は Tailscale へのログインが必要です。Tern を開いてログインしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”에 Tailscale 로그인이 필요합니다. Tern을 열어 로그인하세요."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«%@» требует входа в Tailscale. Откройте Tern, чтобы войти."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」需要登入 Tailscale，開啟 Tern 完成登入。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "来源 IP：通过局域网共享连入的设备地址或网段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source IP: address or range of a device connected through LAN sharing"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信元 IP：LAN 共有で接続したデバイスのアドレスまたは範囲"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "출발지 IP: LAN 공유로 연결한 기기의 주소 또는 범위"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IP источника: адрес или диапазон устройства, подключённого через общий доступ в LAN"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來源 IP：通過區域網共享連入的裝置地址或網段"
+          }
+        }
+      }
+    },
+    "DNS 服务器连续 2 次没有正常回复时": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When a DNS server fails to answer twice in a row"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS サーバーが 2 回連続で正常に応答しないとき"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS 서버가 2회 연속 정상적으로 응답하지 않을 때"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда DNS-сервер дважды подряд не отвечает"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS 伺服器連續 2 次沒有正常回復時"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

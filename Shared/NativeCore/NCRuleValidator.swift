@@ -74,7 +74,7 @@ enum NCRuleValidator {
         "DOMAIN": "DOMAIN", "DOMAIN-SUFFIX": "DOMAIN-SUFFIX", "DOMAIN-KEYWORD": "DOMAIN-KEYWORD", "DOMAIN-WILDCARD": "DOMAIN-WILDCARD",
         "DOMAIN-REGEX": "DOMAIN-REGEX", "IP-CIDR": "IP-CIDR", "IP-CIDR6": "IP-CIDR6", "IP6-CIDR": "IP-CIDR6", "GEOIP": "GEOIP",
         "IP-ASN": "IP-ASN", "GEOSITE": "GEOSITE", "DEST-PORT": "DST-PORT", "DST-PORT": "DST-PORT", "SRC-PORT": "SRC-PORT",
-        "IN-PORT": "IN-PORT", "SRC-IP": "SRC-IP-CIDR", "SRC-IP-CIDR": "SRC-IP-CIDR", "PROCESS-NAME": "PROCESS-NAME",
+        "IN-PORT": "IN-PORT", "SRC-IP": "SRC-IP-CIDR", "SRC-IP-CIDR": "SRC-IP-CIDR", "SRC-IP-CIDR6": "SRC-IP-CIDR", "SRC-IP6-CIDR": "SRC-IP-CIDR", "SRC-IP-SUFFIX": "SRC-IP-SUFFIX", "PROCESS-NAME": "PROCESS-NAME",
         "PROCESS-PATH": "PROCESS-PATH", "NETWORK": "NETWORK", "IP-SUFFIX": "IP-SUFFIX", "SRC-GEOIP": "SRC-GEOIP",
         "SRC-IP-ASN": "SRC-IP-ASN", "DSCP": "DSCP", "UID": "UID", "IN-TYPE": "IN-TYPE", "IN-NAME": "IN-NAME",
         // Quantumult X filter types
@@ -423,6 +423,11 @@ enum NCRuleValidator {
         var c = RuleConv(rule: "\(mt),\(fixValue(mt, parts[1]))", type: mt, policy: parts[2], options: opts)
         if mt == "PROCESS-NAME" || mt == "PROCESS-PATH" || mt == "UID" {
             c.note = "iOS 上无法识别进程，该规则不会命中"
+        }
+        // feat/egern-2-21: on iOS only devices connecting through 局域网共享 (HTTP / SOCKS) have their own source IP;
+        // this device's own traffic arrives from the VPN address.
+        if mt.hasPrefix("SRC-IP") || mt == "SRC-GEOIP" {
+            c.note = "来源 IP 规则只对通过局域网共享连接的设备生效；本机流量的来源是 VPN 地址"
         }
         return c
     }

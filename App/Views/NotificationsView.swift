@@ -24,7 +24,7 @@ struct NotificationsView: View {
     }
 
     /// Loon's order; VPN 意外断开 (Tern only) last.
-    static let order: [NotifyKind] = [.network, .policyFailure, .policyChange, .nodeFailure, .scripts, .memory, .vpn]
+    static let order: [NotifyKind] = [.network, .policyFailure, .policyChange, .nodeFailure, .dnsUpstream, .tailscaleLogin, .scripts, .memory, .vpn]
 
     static func title(_ k: NotifyKind) -> LocalizedStringKey {
         switch k {
@@ -35,6 +35,8 @@ struct NotificationsView: View {
         case .scripts: return "脚本通知"
         case .memory: return "内存警告"
         case .vpn: return "VPN 意外断开"
+        case .dnsUpstream: return "DNS 上游异常"
+        case .tailscaleLogin: return "Tailscale 需要登录"
         }
     }
 
@@ -47,6 +49,8 @@ struct NotificationsView: View {
         case .scripts: return "重写 / 模块里的脚本发出的通知，例如签到结果"
         case .memory: return "隧道内存接近系统上限、关闭了部分连接时"
         case .vpn: return "VPN 被系统断开，或被系统结束后自动重新连接时"
+        case .dnsUpstream: return "DNS 服务器连续 2 次没有正常回复时"
+        case .tailscaleLogin: return "Tailscale 节点需要在浏览器里登录或重新授权时"
         }
     }
 

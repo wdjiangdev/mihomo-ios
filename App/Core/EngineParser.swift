@@ -501,7 +501,7 @@ extension NCEngineRuleset {
         "DOMAIN-WILDCARD": "DOMAIN-WILDCARD", "DOMAIN-REGEX": "DOMAIN-REGEX", "IP-CIDR": "IP-CIDR",
         "IP-CIDR6": "IP-CIDR6", "IP6-CIDR": "IP-CIDR6", "GEOIP": "GEOIP", "IP-ASN": "IP-ASN",
         "GEOSITE": "GEOSITE", "DEST-PORT": "DST-PORT", "DST-PORT": "DST-PORT", "SRC-PORT": "SRC-PORT",
-        "IN-PORT": "IN-PORT", "SRC-IP": "SRC-IP-CIDR", "SRC-IP-CIDR": "SRC-IP-CIDR",
+        "IN-PORT": "IN-PORT", "SRC-IP": "SRC-IP-CIDR", "SRC-IP-CIDR": "SRC-IP-CIDR", "SRC-IP-CIDR6": "SRC-IP-CIDR", "SRC-IP6-CIDR": "SRC-IP-CIDR", "SRC-IP-SUFFIX": "SRC-IP-SUFFIX",
         "PROCESS-NAME": "PROCESS-NAME", "PROCESS-PATH": "PROCESS-PATH", "NETWORK": "NETWORK",
         "IP-SUFFIX": "IP-SUFFIX", "SRC-GEOIP": "SRC-GEOIP", "SRC-IP-ASN": "SRC-IP-ASN",
         "DSCP": "DSCP", "UID": "UID", "IN-TYPE": "IN-TYPE", "IN-NAME": "IN-NAME",
@@ -2225,7 +2225,7 @@ extension NCEngineRuleset {
     static let egernTopKeys = ["scriptings:", "url_rewrites:", "header_rewrites:", "body_rewrites:", "map_locals:",
                                "compat_arguments:", "widgets:", "http_captures:", "real_ip_domains:",
                                "bypass_tunnel_proxy:", "env_schema:"]
-    static let egernRuleItemRe = regex(#"^\s*-\s+(domain|domain_suffix|domain_keyword|domain_regex|domain_wildcard|ip_cidr|ip_cidr6|geoip|asn|url_regex|user_agent|dest_port|protocol|rule_set|and|or|not|default|ssid)\s*:\s*$"#)
+    static let egernRuleItemRe = regex(#"^\s*-\s+(domain|domain_suffix|domain_keyword|domain_regex|domain_wildcard|ip_cidr|ip_cidr6|src_ip|src_ip_cidr|src_ip_cidr6|geoip|asn|url_regex|user_agent|dest_port|protocol|rule_set|and|or|not|default|ssid)\s*:\s*$"#)
 
     /// mitm IsEgern. (A Stash document — `rules:` plus `- DOMAIN,…`
     /// items — must NOT match here: the old core's IsEgern has no such branch,
@@ -2306,6 +2306,10 @@ extension NCEngineRuleset {
         "domain": "DOMAIN", "domain_suffix": "DOMAIN-SUFFIX", "domain_keyword": "DOMAIN-KEYWORD",
         "domain_regex": "DOMAIN-REGEX", "domain_wildcard": "DOMAIN-WILDCARD", "ip_cidr": "IP-CIDR",
         "ip_cidr6": "IP-CIDR6", "geoip": "GEOIP", "asn": "IP-ASN", "url_regex": "URL-REGEX",
+        // feat/egern-2-21: Egern 2.21 「Source IP (SRC-IP) rules」. The YAML key is not in egernapp.com's rule docs
+        // yet (checked 2026-11-11); `src_ip` follows Egern's naming of the other IP keys (inferred), the CIDR
+        // spellings are accepted too.
+        "src_ip": "SRC-IP-CIDR", "src_ip_cidr": "SRC-IP-CIDR", "src_ip_cidr6": "SRC-IP-CIDR",
         "dest_port": "DST-PORT", "protocol": "PROTOCOL", "rule_set": "RULE-SET",
     ]
 
@@ -2532,10 +2536,17 @@ extension NCEngineRuleset {
         if let arr = root["body_rewrites"]?.array {
             for item in arr { parseEgernBodyRewrite(item) }
         }
-        for key in ["url_rewrites", "header_rewrites", "map_locals"] {
-            if let arr = root[key]?.array {
-                for item in arr { unsupported.append("egern \(key): \(item)") }
-            }
+        // feat/egern-2-21: Egern 2.21 keeps url_rewrites / header_rewrites working under its unified rewrite engine
+        // (App Store notes); converted here per egernapp.com/docs/configuration/url_rewrites + header_rewrites.
+        if let arr = root["url_rewrites"]?.array {
+            for item in arr { parseEgernURLRewrite(item) }
+        }
+        if let arr = root["header_rewrites"]?.array {
+            for item in arr { parseEgernHeaderRewrite(item) }
+        }
+        // map_locals: no public schema page (not in the docs sitemap, 2026-11-11) — still listed, not guessed.
+        if let arr = root["map_locals"]?.array {
+            for item in arr { unsupported.append("egern map_locals: \(item)") }
         }
         // env_schema: user-set values merge into every script env of
         // this module (the old core's deferred put; module env wins). The
@@ -2583,6 +2594,74 @@ extension NCEngineRuleset {
             }
         }
         if !handled { unsupported.append("egern body_rewrites: \(item)") }
+    }
+
+    /// Egern `url_rewrites` item `{match, location, status_code?, disabled?}`: `http://reject*/` locations block,
+    /// a status code redirects (301 / 302 → 302, 307 / 308 → 307: our redirect keeps or drops the method the same
+    /// way), no status code is header mode (transparent upstream rewrite).
+    func parseEgernURLRewrite(_ item: NCJSONValue) {
+        guard let o = item.object else {
+            unsupported.append("egern url_rewrites: \(item)")
+            return
+        }
+        if o["disabled"]?.bool == true { return }
+        let match = Self.egernStr(o["match"]).trimmingCharacters(in: .whitespaces)
+        let location = Self.egernStr(o["location"]).trimmingCharacters(in: .whitespaces)
+        let line = "egern url_rewrites: \(match) \(location)"
+        guard !match.isEmpty, !location.isEmpty else {
+            addRule(line: line, nil, .message("url_rewrites 缺少 match 或 location"))
+            return
+        }
+        var r = NCEngineRule(kind: "url", phase: "request", pattern: match)
+        let lower = location.lowercased()
+        let rejects: [String: String] = ["http://reject/": "reject", "http://reject-200/": "reject-200",
+                                         "http://reject-dict/": "reject-dict", "http://reject-array/": "reject-array",
+                                         "http://reject-img/": "reject-img", "http://reject-video/": "reject-200"]
+        let key = lower.hasSuffix("/") ? lower : lower + "/"
+        if let act = rejects[key] {
+            r.action = act
+        } else if let code = o["status_code"]?.int ?? Int(Self.egernStr(o["status_code"])) {
+            switch code {
+            case 301, 302, 303: r.action = "302"
+            case 307, 308: r.action = "307"
+            default:
+                addRule(line: line, nil, .message("url_rewrites 不支持的 status_code \(code)"))
+                return
+            }
+            r.target = location
+        } else {
+            r.action = "header"
+            r.target = location
+        }
+        addRule(line: line, r, nil)
+    }
+
+    /// Egern `header_rewrites` item `- add|replace|delete: {match, name, value?, type?, disabled?}`. Egern's add and
+    /// replace both set the header (replace when present, add when not) → del + add here; type request (default) /
+    /// response picks the phase.
+    func parseEgernHeaderRewrite(_ item: NCJSONValue) {
+        guard let o = item.object, o.count == 1, let (verb, v) = o.first, let spec = v.object,
+              ["add", "replace", "delete"].contains(verb) else {
+            unsupported.append("egern header_rewrites: \(item)")
+            return
+        }
+        if spec["disabled"]?.bool == true { return }
+        let match = Self.egernStr(spec["match"]).trimmingCharacters(in: .whitespaces)
+        let name = Self.egernStr(spec["name"]).trimmingCharacters(in: .whitespaces)
+        let value = Self.egernStr(spec["value"])
+        let type = Self.egernStr(spec["type"]).lowercased()
+        let line = "egern header_rewrites \(verb): \(match) \(name)"
+        guard !match.isEmpty, !name.isEmpty else {
+            addRule(line: line, nil, .message("header_rewrites 缺少 match 或 name"))
+            return
+        }
+        var r = NCEngineRule(kind: "header", phase: type == "response" ? "response" : "request", pattern: match)
+        if verb == "delete" {
+            r.headers = [(op: "del", name: name, value: "", regex: "")]
+        } else {
+            r.headers = [(op: "del", name: name, value: "", regex: ""), (op: "add", name: name, value: value, regex: "")]
+        }
+        addRule(line: line, r, nil)
     }
 
     static func egernPatterns(_ v: NCJSONValue) -> [String] {

@@ -55,6 +55,7 @@ struct NCRuleSetIndex {
     static let matchableKinds: Set<String> = [
         "MATCH", "DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "DOMAIN-WILDCARD", "DOMAIN-REGEX",
         "IP-CIDR", "IP-CIDR6", "SRC-IP-CIDR", "GEOIP", "SRC-GEOIP", "GEOSITE", "IP-ASN",
+        "IP-SUFFIX", "SRC-IP-SUFFIX", "SRC-IP-ASN",
         "DST-PORT", "DEST-PORT", "SRC-PORT", "IN-PORT", "IN-TYPE", "NETWORK",
         "PROCESS-NAME", "PROCESS-PATH", "PROCESS-NAME-REGEX", "PROCESS-PATH-REGEX",
         "URL-REGEX", "PROTOCOL", "USER-AGENT",
@@ -253,6 +254,8 @@ struct NCRuleSetIndex {
     private static let qxKinds: [String: String] = [
         "HOST": "DOMAIN", "HOST-SUFFIX": "DOMAIN-SUFFIX", "HOST-KEYWORD": "DOMAIN-KEYWORD",
         "HOST-WILDCARD": "DOMAIN-WILDCARD", "IP6-CIDR": "IP-CIDR",
+        // feat/egern-2-21: Surge / Egern / QX source-IP spellings (NCRule.kindAliases).
+        "SRC-IP": "SRC-IP-CIDR", "SRC-IP-CIDR6": "SRC-IP-CIDR", "SRC-IP6-CIDR": "SRC-IP-CIDR", "SRC-IP6": "SRC-IP-CIDR",
     ]
 
     private mutating func addClassicalLine(_ line: String, dialect: Dialect) {

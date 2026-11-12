@@ -253,6 +253,9 @@ struct DNSView: View {
             }
             .listRowBackground(Theme.card)
 
+            // feat/egern-2-21: per-upstream health from the tunnel's probes (reads dns-health.json off main).
+            DNSHealthSection()
+
             if s.enabled {
                 Section {
                     Toggle("国内 / 国外分流", isOn: $s.split)

@@ -54,6 +54,8 @@ struct ConnectionDetailView: View {
     @State private var httpDetail: HTTPRequestDetail?
     @State private var geo: IPInfo?
     @State private var geoState = 0 // 0 idle, 1 loading, 2 failed
+    /// feat/egern-2-21: 出站节点 (node, server, server region / ASN from the local databases).
+    @State private var outbound: OutboundNodeInfo?
 
     var record: TimelineRecord? { model.timeline[c.id] }
     var current: ConnectionItem { model.active.first { $0.id == c.id } ?? model.recent.first { $0.id == c.id } ?? c }
@@ -81,6 +83,7 @@ struct ConnectionDetailView: View {
                 if let h = http.first { httpSummary(h) }
                 addressSection
                 ruleSection
+                outboundSection
                 locationSection
                 stateSection
                 probeSection
@@ -94,6 +97,7 @@ struct ConnectionDetailView: View {
         .navigationTitle(Text(verbatim: c.metadata.displayHost))
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadHTTP() }
+        .task { await loadOutbound() }
         .onChange(of: httpPick) { id in
             httpDetail = nil
             guard let id else { return }
@@ -154,6 +158,100 @@ struct ConnectionDetailView: View {
             Text("规则")
         }
         .listRowBackground(Theme.card)
+    }
+
+    // MARK: 出站节点 (feat/egern-2-21)
+
+    /// Egern 2.21 「Proxy server and its location in connection details」: the node this connection left through,
+    /// its server, and where that server is according to the local GeoIP / ASN databases. A region read from the
+    /// node's name is labelled as inferred; an exit is shown only when 出口 IP / 解锁检测 already measured it.
+    @ViewBuilder var outboundSection: some View {
+        if let o = outbound {
+            Section {
+                LabeledContent("名称") {
+                    HStack(spacing: 6) {
+                        if let t = o.type, !t.isEmpty {
+                            Text(verbatim: t.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                        Text(verbatim: o.name).font(.callout).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("conndetail.node")
+                if !o.hops.isEmpty {
+                    row("链路", o.hops.joined(separator: " → "))
+                }
+                if let s = o.serverText {
+                    row("服务器", s, mono: true).accessibilityElement(children: .combine).accessibilityIdentifier("conndetail.node.server")
+                }
+                if let cc = o.countryCode {
+                    row("服务器地区", "\(CountryFlag.emoji(cc) ?? "🌐") \(Self.regionName(cc))")
+                        .accessibilityElement(children: .combine).accessibilityIdentifier("conndetail.node.region")
+                }
+                if let a = o.asnText {
+                    row("ASN", a, mono: true).accessibilityElement(children: .combine).accessibilityIdentifier("conndetail.node.asn")
+                }
+                if o.countryCode == nil, let cc = o.inferredCode {
+                    row("地区（按名称推断）", "\(CountryFlag.emoji(cc) ?? "🌐") \(Self.regionName(cc))")
+                        .accessibilityElement(children: .combine).accessibilityIdentifier("conndetail.node.inferred")
+                }
+                if let e = o.exit {
+                    LabeledContent("出口") {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(verbatim: "\(e.flag) \(e.placeText)").font(.callout).lineLimit(1)
+                            Text(verbatim: e.ip).font(.caption.monospaced()).foregroundStyle(.secondary)
+                            if let d = o.exitDate {
+                                Text("检测于 \(d.formatted(.relative(presentation: .named)))").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("conndetail.node.exit")
+                }
+            } header: {
+                Text("出站节点")
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("服务器地区和 ASN 来自本机的 GeoIP / ASN 数据库，不向外部服务查询。")
+                    if o.serverIsDomain {
+                        Text("服务器是域名，App 不自行解析，所以没有服务器地区。")
+                    } else if o.noGeoDB, o.serverIP != nil {
+                        Text("还没有 GeoIP 数据库（更多 → 地理数据库）。")
+                    }
+                    if o.exit == nil {
+                        Text("这个节点在「工具 → 流媒体解锁」里检测过之后，这里会显示它的出口位置。")
+                    }
+                }
+            }
+            .listRowBackground(Theme.card)
+        }
+    }
+
+    static func regionName(_ code: String) -> String {
+        let lang = Bundle.main.preferredLocalizations.first ?? Locale.current.identifier
+        return Locale(identifier: lang).localizedString(forRegionCode: code) ?? code
+    }
+
+    /// Node fields from the inspected profile (or the node list), then the database lookup off the main thread.
+    func loadOutbound() async {
+        guard let node = OutboundNode.nodeName(current.chains) else { return }
+        let name = node.name, hops = node.hops
+        if UITestSeed.enabled && UITestSeed.args.contains("-UITestDemoConnections") {
+            outbound = OutboundNode.demo(name: name, hops: hops) ?? OutboundNodeInfo(name: name, hops: hops)
+            return
+        }
+        var base = OutboundNodeInfo(name: name, hops: hops)
+        if let p = ProfileInspector.shared.nodeIndex[name] {
+            base.type = p.type; base.server = p.server; base.port = p.port
+        } else if let n = NodeManagerModel.shared.nodes.first(where: { $0.name == name }) {
+            base.type = n.type; base.server = n.server; base.port = n.port
+        }
+        if let e = ProbeStore.shared.entry(name), let x = e.exit {
+            base.exit = x
+            base.exitDate = e.exitDate
+        }
+        let home = AppShared.homeURL
+        outbound = await Task.detached(priority: .userInitiated) { OutboundNode.lookup(base, home: home) }.value
     }
 
     /// The destination IP's region / ASN, looked up only when asked (the IP is sent to the lookup service).
