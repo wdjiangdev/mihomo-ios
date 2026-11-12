@@ -10,7 +10,13 @@ final class Egern221Tests: XCTestCase {
     func testProbeQueryIsAStandardAQuery() {
         let q = NCDNSHealth.query(id: 0x1234, name: "www.apple.com")
         XCTAssertEqual(Array(q.prefix(12)), [0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
-        let qname: [UInt8] = [3] + Array("www".utf8) + [5] + Array("apple".utf8) + [3] + Array("com".utf8) + [0]
+        var qname: [UInt8] = [3]
+        qname.append(contentsOf: Array("www".utf8))
+        qname.append(5)
+        qname.append(contentsOf: Array("apple".utf8))
+        qname.append(3)
+        qname.append(contentsOf: Array("com".utf8))
+        qname.append(0)
         XCTAssertEqual(Array(q[12..<(12 + qname.count)]), qname)
         XCTAssertEqual(Array(q.suffix(4)), [0x00, 0x01, 0x00, 0x01], "QTYPE A, QCLASS IN")
         let msg = NCDNSMessage.parse(q)
