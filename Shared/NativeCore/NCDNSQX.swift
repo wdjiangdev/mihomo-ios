@@ -352,7 +352,7 @@ struct NCResolveCache {
 
     /// Network change (QX): everything expires now, nothing is dropped.
     mutating func markAllExpired(now: Date = Date()) {
-        for k in Array(entries.keys) { entries[k]?.expires = min(entries[k]!.expires, now) }
+        entries = entries.mapValues { e in Entry(ip: e.ip, expires: min(e.expires, now)) }
     }
 
     mutating func removeAll() { entries.removeAll() }
