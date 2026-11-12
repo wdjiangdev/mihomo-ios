@@ -25,7 +25,7 @@ final class NotifyPrefsTests: XCTestCase {
         XCTAssertTrue(NotifyPrefs.masterEnabled)
         XCTAssertFalse(NotifyPrefs.isOn(.network))
         XCTAssertFalse(NotifyPrefs.isOn(.memory))
-        for k in [NotifyKind.policyFailure, .policyChange, .nodeFailure, .scripts, .vpn] {
+        for k in [NotifyKind.policyFailure, .policyChange, .nodeFailure, .scripts, .vpn, .dnsUpstream, .tailscaleLogin] {
             XCTAssertTrue(NotifyPrefs.isOn(k), k.rawValue)
         }
         XCTAssertEqual(NotifyKind.scripts.key, "notify.scripts", "pre-0.19.18 key kept")
@@ -43,6 +43,18 @@ final class NotifyPrefsTests: XCTestCase {
         XCTAssertFalse(NotifyPrefs.allows(.scripts))
     }
 
+    /// feat/egern-2-21: the two new kinds are tunnel-side switches (no policy-watcher bit) listed on 通知.
+    func testEgern221Kinds() {
+        XCTAssertEqual(NotifyKind.dnsUpstream.coreBit, 0)
+        XCTAssertEqual(NotifyKind.tailscaleLogin.coreBit, 0)
+        XCTAssertEqual(NotifyKind.dnsUpstream.key, "notify.dnsUpstream")
+        XCTAssertTrue(NotificationsView.order.contains(.dnsUpstream))
+        XCTAssertTrue(NotificationsView.order.contains(.tailscaleLogin))
+        XCTAssertEqual(Set(NotificationsView.order), Set(NotifyKind.allCases), "every kind has a row")
+        NotifyPrefs.set(.dnsUpstream, false)
+        XCTAssertFalse(NotifyPrefs.allows(.dnsUpstream))
+    }
+
     func testOlderScriptSwitchIsRead() {
         AppShared.defaults.set(false, forKey: "notify.scripts")
         XCTAssertFalse(NotifyPrefs.allows(.scripts))
@@ -54,7 +66,10 @@ final class NotifyPrefsTests: XCTestCase {
                     "「%@」已切换到 %@（原为 %@）", "「%@」里的节点全部测速失败，暂时没有可用节点。", "「%@」测速失败（策略组「%@」正在使用）。",
                     "隧道内存接近系统上限，已关闭 %@ 个最早的连接。", "已切换到 Wi-Fi「%@」", "已切换到 Wi-Fi", "已切换到蜂窝网络",
                     "已切换到有线网络", "已切换到其他网络", "扩展未正常退出（被系统终止、崩溃或设备关机）",
-                    "扩展运行失败", "网络发生不可恢复的变化", "空闲超时", "被其他 VPN 配置取代", "连接失败", "内部错误"]
+                    "扩展运行失败", "网络发生不可恢复的变化", "空闲超时", "被其他 VPN 配置取代", "连接失败", "内部错误",
+                    // feat/egern-2-21: DNS upstream health + Tailscale login-required.
+                    "DNS 上游异常", "「%@」连续 2 次没有正常回复，域名解析可能变慢或失败。", "%@ 等 %@ 个 DNS 上游连续 2 次没有正常回复。",
+                    "Tailscale 需要登录", "「%@」需要登录 Tailscale，打开 Tern 完成登录。"]
         for lang in ["en", "zh-Hant", "ja", "ko", "ru"] {
             let path = try XCTUnwrap(Bundle.main.path(forResource: lang, ofType: "lproj"), lang)
             let b = try XCTUnwrap(Bundle(path: path))

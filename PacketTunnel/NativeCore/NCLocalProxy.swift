@@ -474,7 +474,11 @@ final class NCLocalProxy {
     }
 
     private func open(_ c: Conn, done: @escaping (Bool, UInt8) -> Void) {
-        let ctx = engine.matchContext(domain: c.ruleDomain, ip: c.target.ip, dstPort: c.target.port, network: "tcp")
+        // feat/egern-2-21: SRC-IP-CIDR / SRC-IP-SUFFIX / SRC-GEOIP / SRC-IP-ASN rules see the LAN device's address
+        // (局域网共享 / 热点 clients); before, every source rule silently missed here.
+        var ctx = engine.matchContext(domain: c.ruleDomain, ip: c.target.ip, srcIP: NCLanShare.sourceIP(c.sourceIP),
+                                      dstPort: c.target.port, network: "tcp")
+        ctx.srcPort = Int(c.sourcePort)
         // rv2-rules: IP rules on a domain target resolve it first (no-resolve skips), same as the TUN data plane.
         engine.routeAsync(ctx, queue: queue) { [weak self, weak c] policy, rule, resolution in
             guard let self, let c, !c.closed else { return }

@@ -4,6 +4,11 @@
 
 ## 未发布
 
+- **Egern 2.21 对齐：来源 IP 规则**。`SRC-IP,192.168.1.10`（Surge / Egern 写法，裸 IP 按 /32、/128）、`SRC-IP-CIDR6` / `SRC-IP6-CIDR` 按 `SRC-IP-CIDR` 处理；新增 `IP-SUFFIX` / `SRC-IP-SUFFIX`（按地址末尾若干位匹配，同 Clash.Meta）和 `SRC-IP-ASN`；规则集、逻辑规则、规则校验、Egern 模块 `src_ip` 都能识别，规则编辑器可直接选「SRC-IP-CIDR」。iOS 上只有通过「局域网共享」（HTTP / SOCKS 代理、热点）连进来的设备有自己的来源 IP，本机流量的来源是 VPN 地址，规则编辑器会提示。局域网共享的连接现在把客户端地址交给规则匹配（以前所有来源规则在这里都不会命中）。
+- **DNS 上游健康检测**：连接 VPN 后每 60 秒向配置里的每个主 DNS / 回落 DNS / 引导 DNS（UDP、TCP、DoH、DoT、DoQ，最多 8 个）查询一次 `www.apple.com`，5 秒超时，连续 2 次失败算异常，超过 800 ms 显示「较慢」。工具 → DNS 新增「上游状态」，每个上游显示状态与延迟，有异常时顶部红色提示；更多 → 通知 新增「DNS 上游异常」开关（默认开）。探测走独立的转发器，不经过查询缓存，不影响正常解析。
+- **连接详情「出站节点」**：经代理的连接显示节点名称、类型、链路、服务器地址与端口，以及服务器 IP 在本机 GeoIP / ASN 数据库里的地区和 ASN（不向外部服务查询）；服务器是域名或数据库里查不到时，显示按节点名称推断的地区并注明「按名称推断」；这个节点在「流媒体解锁」里检测过出口时一并显示出口位置。
+- **Tailscale 需要登录时发通知**：控制面要求浏览器登录时提醒一次（更多 → 通知 → Tailscale 需要登录，默认开）。
+- Egern 模块的 `url_rewrites`（reject / 301·302 / 307·308 / 不写状态码的 header 模式）和 `header_rewrites`（add / replace / delete，请求或响应）现在会导入，以前列为不支持；`map_locals` 暂无公开格式，仍列为不支持。
 - **DNS 查询逻辑对齐 Quantumult X**：同一组的所有 DNS 服务器同时查询、最快的可用结果生效（以前最多两台、错开 300 ms）；QX 配置里的 `system`（当前网络的 DNS，未写 `no-system` 时默认使用）和 `server=/域名/system` 现在真正参与查询；支持 `circumvent-ipv4-answer` / `circumvent-ipv6-answer`（结果全部命中则视为失败、继续等其他服务器，部分命中则去掉命中的地址）；`no-ipv6` 让 AAAA 查询直接返回空结果。
 - **DNS 层拦截默认改为 QX 的 loopback**：被 REJECT 规则拦截的域名返回 127.0.0.1 / ::1（TTL 10），以前返回 NXDOMAIN；QX 配置的 `dns_reject_domain_behavior`（loopback / no-error-no-answer / nxdomain / none）会被导入并生效，DNS 日志按实际方式标注拦截。
 - **分流匹配用的 DNS 缓存按 QX 处理**：按应答 TTL 缓存（10 秒 – 1 小时），过期结果先用于匹配、同时后台重新查询；网络变化时把缓存标记为过期而不是清空（设置项改名为「网络变化时让 DNS 缓存过期」）。分流匹配阶段发起的查询也写入 DNS 日志。

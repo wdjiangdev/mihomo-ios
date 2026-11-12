@@ -362,8 +362,14 @@ final class NCTailscaleClient {
     private func handleControlStatusChanged(_ statusFile: NCTailscaleStatusFile) {
         clientLock.lock()
         if statusFile.state == NCTailscaleLoginState.needsLogin.rawValue {
+            // feat/egern-2-21 (Egern 2.21 「login-required notifications」): once per transition into needsLogin.
+            let newlyNeedsLogin = self.state != NCTailscaleLoginState.needsLogin.rawValue
             self.state = NCTailscaleLoginState.needsLogin.rawValue
             self.authURL = statusFile.authURL
+            clientLock.unlock()
+            writeStatusFile()
+            if newlyNeedsLogin { Self.postLoginRequired(name) }
+            return
         } else if statusFile.state == NCTailscaleLoginState.failed.rawValue {
             self.state = NCTailscaleLoginState.failed.rawValue
             self.lastError = statusFile.lastError
@@ -377,6 +383,13 @@ final class NCTailscaleClient {
         }
         clientLock.unlock()
         writeStatusFile()
+    }
+
+    /// 更多 → 通知 → Tailscale 需要登录. Catalog keys, localized by iOS when shown (TunnelNotice).
+    static func postLoginRequired(_ node: String) {
+        guard NotifyPrefs.allows(.tailscaleLogin) else { return }
+        TunnelNotice.post(kind: .tailscaleLogin, title: NotifyText.loc("Tailscale 需要登录"),
+                          body: NotifyText.loc("「%@」需要登录 Tailscale，打开 Tern 完成登录。", [node]))
     }
 
     private func handleSnapshotChanged(_ snapshot: NCTailscaleNetmapSnapshot) {

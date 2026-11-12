@@ -18,7 +18,7 @@ struct NCRule: Equatable {
         guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return nil }
         let fields = splitTopLevel(trimmed)
         guard fields.count >= 2 else { return nil }
-        let kind = fields[0].uppercased()
+        let kind = canonicalKind(fields[0])
         if kind == "MATCH" || kind == "FINAL" {
             return NCRule(raw: line, kind: "MATCH", payload: "", policy: fields[1], noResolve: false, subRules: [])
         }
@@ -79,7 +79,7 @@ struct NCRule: Equatable {
     private static func parseSubRule(_ inner: String) -> NCRule? {
         let fields = splitTopLevel(inner)
         guard fields.count >= 2 else { return nil }
-        let kind = fields[0].uppercased()
+        let kind = canonicalKind(fields[0])
         if ["AND", "OR", "NOT"].contains(kind), fields.count >= 2 {
             return NCRule(raw: inner, kind: kind, payload: fields[1], policy: "",
                           noResolve: false, subRules: parseLogicPayload(fields[1]))
@@ -87,6 +87,18 @@ struct NCRule: Equatable {
         let options = Array(fields.dropFirst(2))
         return NCRule(raw: inner, kind: kind, payload: fields[1], policy: "",
                       noResolve: options.contains { $0.lowercased() == "no-resolve" }, subRules: [])
+    }
+
+    /// feat/egern-2-21 (Egern 2.21 「Source IP (SRC-IP) rules」): source-address spellings of other clients → the
+    /// Clash.Meta type. Surge / Egern write `SRC-IP,192.168.1.10` (bare IP or CIDR); some lists say `SRC-IP-CIDR6` /
+    /// `SRC-IP6-CIDR` for v6. NCCIDR takes a bare address as a /32 or /128, so the payload needs no rewrite.
+    static let kindAliases: [String: String] = [
+        "SRC-IP": "SRC-IP-CIDR", "SRC-IP-CIDR6": "SRC-IP-CIDR", "SRC-IP6-CIDR": "SRC-IP-CIDR", "SRC-IP6": "SRC-IP-CIDR",
+    ]
+
+    static func canonicalKind(_ raw: String) -> String {
+        let k = raw.uppercased()
+        return kindAliases[k] ?? k
     }
 
     /// Split on commas that are not inside parentheses.
@@ -186,6 +198,15 @@ struct NCRuleMatcher {
         case "SRC-GEOIP":
             guard let ip = ctx.srcIP else { return false }
             return geoIPMatches(rule.payload, ip, ctx)
+        case "IP-SUFFIX":
+            guard let ip = ctx.ip else { return false }
+            return ipSuffixMatches(rule.payload, ip)
+        case "SRC-IP-SUFFIX":
+            guard let ip = ctx.srcIP else { return false }
+            return ipSuffixMatches(rule.payload, ip)
+        case "SRC-IP-ASN":
+            guard let ip = ctx.srcIP, let asn = ctx.asnOf(ip) else { return false }
+            return asn == asnNumber(rule.payload)
         case "GEOSITE":
             guard let d = ctx.domain else { return false }
             return ctx.geositeMatches(rule.payload, d)
@@ -227,6 +248,30 @@ struct NCRuleMatcher {
         default:
             return false
         }
+    }
+
+    /// Clash.Meta IP-SUFFIX / SRC-IP-SUFFIX (rules/common/ipsuffix.go): `addr/bits` matches an address of the same
+    /// family whose LAST `bits` bits equal the payload's — e.g. `IP-SUFFIX,0.0.0.8/8` is every x.y.z.8.
+    static func ipSuffixMatches(_ payload: String, _ ip: NCIP) -> Bool {
+        let parts = payload.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 2, let want = NCIP(String(parts[0])), let bits = Int(parts[1]) else { return false }
+        let a = want.bytes, b = ip.bytes
+        guard a.count == b.count, bits >= 0, bits <= a.count * 8 else { return false }
+        let full = bits / 8
+        for i in 0..<full where a[a.count - 1 - i] != b[b.count - 1 - i] { return false }
+        let rem = bits % 8
+        if rem != 0 {
+            let idx = a.count - 1 - full
+            let mask = UInt8((1 << rem) - 1)
+            if a[idx] & mask != b[idx] & mask { return false }
+        }
+        return true
+    }
+
+    /// `13335`, `AS13335` → 13335.
+    static func asnNumber(_ payload: String) -> Int? {
+        let t = payload.trimmingCharacters(in: .whitespaces).uppercased()
+        return Int(t.hasPrefix("AS") ? String(t.dropFirst(2)) : t)
     }
 
     /// GEOIP payload against the IP's code(s), case-insensitive (fix/nc-diag-439: any code of a multi-code record).
@@ -360,7 +405,7 @@ struct NCRuleMatcher {
     }
 
     /// Rule kinds whose match reads the destination IP.
-    static let ipKinds: Set<String> = ["IP-CIDR", "IP-CIDR6", "GEOIP", "IP-ASN"]
+    static let ipKinds: Set<String> = ["IP-CIDR", "IP-CIDR6", "GEOIP", "IP-ASN", "IP-SUFFIX"]
 
     /// Clash.Meta Rule.ShouldResolveIP: true for IP rules without no-resolve,
     /// RULE-SETs over IP data, and logic / SUB-RULE rules containing one.
@@ -406,7 +451,7 @@ struct NCRuleMatcher {
     static let knownKinds: Set<String> = [
         "MATCH", "AND", "OR", "NOT", "DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "DOMAIN-WILDCARD",
         "DOMAIN-REGEX", "DOMAIN-SET", "IP-CIDR", "IP-CIDR6", "SRC-IP-CIDR", "GEOIP", "SRC-GEOIP", "GEOSITE",
-        "IP-ASN", "DST-PORT", "DEST-PORT", "SRC-PORT", "IN-PORT", "IN-TYPE", "NETWORK", "PROTOCOL",
+        "IP-ASN", "IP-SUFFIX", "SRC-IP-SUFFIX", "SRC-IP-ASN", "DST-PORT", "DEST-PORT", "SRC-PORT", "IN-PORT", "IN-TYPE", "NETWORK", "PROTOCOL",
         "PROCESS-NAME", "PROCESS-PATH", "PROCESS-NAME-REGEX", "PROCESS-PATH-REGEX", "URL-REGEX",
         "USER-AGENT", "SUB-RULE", "RULE-SET",
     ]

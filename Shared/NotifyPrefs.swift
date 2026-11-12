@@ -14,10 +14,12 @@ import UserNotifications
 /// - scripts        core, $notification.post / $notify from rewrites and modules
 /// - memory         tunnel, MemoryGuard closed connections near the extension's memory limit
 /// - vpn            tunnel, stopped by iOS for a reason other than the user (or reconnected after the system ended it)
+/// - dnsUpstream    tunnel, NCDNSHealthMonitor: a configured DNS upstream failed 2 probes in a row (feat/egern-2-21)
+/// - tailscaleLogin tunnel, NCTailscaleClient: a Tailscale node's control server asks for an interactive login
 /// The subscription usage / expiry and automatic-update notifications keep their own switches (UsageAlerts,
 /// ScheduledUpdates) and are posted by the app.
 enum NotifyKind: String, CaseIterable, Identifiable {
-    case network, policyFailure, policyChange, nodeFailure, scripts, memory, vpn
+    case network, policyFailure, policyChange, nodeFailure, scripts, memory, vpn, dnsUpstream, tailscaleLogin
 
     var id: String { rawValue }
 
