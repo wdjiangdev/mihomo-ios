@@ -119,6 +119,17 @@ struct NCDNSConfig: Equatable {
     var defaultNameservers: [String] { fields["default-nameserver"]?.array?.compactMap { $0.string } ?? [] }
     var proxyServerNameservers: [String] { fields["proxy-server-nameserver"]?.array?.compactMap { $0.string } ?? [] }
     var enhancedMode: String { fields["enhanced-mode"]?.string ?? "fake-ip" }
+    /// fix/qx-dns-records: QX `no-ipv6` (imported as dns.ipv6: false) — AAAA queries fail locally.
+    var ipv6: Bool { fields["ipv6"]?.bool ?? true }
+    /// fix/qx-dns-records: QX dns_reject_domain_behavior, kept as dns.reject-domain-behavior (nil = QX default).
+    var rejectBehavior: NCDNSRejectBehavior? {
+        NCDNSRejectBehavior(raw: fields["reject-domain-behavior"]?.string ?? fields["dns_reject_domain_behavior"]?.string)
+    }
+    /// fix/qx-dns-records: QX circumvent-ipv4-answer / circumvent-ipv6-answer (string or list).
+    var circumvent: NCDNSCircumvent {
+        NCDNSCircumvent(v4: NCDNSCircumvent.patterns(fields["circumvent-ipv4-answer"]),
+                        v6: NCDNSCircumvent.patterns(fields["circumvent-ipv6-answer"]))
+    }
 }
 
 /// The runtime config the native core runs. Decoded from the JSON form of

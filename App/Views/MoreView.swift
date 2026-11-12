@@ -578,10 +578,10 @@ struct SettingsView: View {
             Section {
                 Toggle("切换节点或模式时断开所有连接", isOn: $closeOnSwitch)
                     .accessibilityIdentifier("settings.closeOnSwitch")
-                Toggle("网络变化时清空 DNS 缓存", isOn: $o.flushDNSOnNetworkChange)
+                Toggle("网络变化时让 DNS 缓存过期", isOn: $o.flushDNSOnNetworkChange)
                     .accessibilityIdentifier("settings.flushDNS")
             } header: { Text("连接") } footer: {
-                Text("断开后，App 会经由新选的节点或模式重新连接；关闭则已有连接保持原来的节点直到结束。Wi-Fi 与蜂窝网络切换或换了 Wi-Fi 时清空 DNS 缓存，避免沿用上一个网络的解析结果。")
+                Text("断开后，App 会经由新选的节点或模式重新连接；关闭则已有连接保持原来的节点直到结束。Wi-Fi 与蜂窝网络切换或换了 Wi-Fi 时把 DNS 缓存标记为过期（与 Quantumult X 相同）：过期结果先用于连接，同时重新查询，新结果到了就替换。")
             }
             .listRowBackground(Theme.card)
 

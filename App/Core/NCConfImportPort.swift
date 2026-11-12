@@ -885,6 +885,7 @@ enum NCConfImportPort {
         var policyOrder: [String] = []
         var hosts: [String: String] = [:]
         var noSystem = false, preferH3 = false, noIPv6 = false
+        var circumvent: [String: [String]] = [:] // fix/qx-dns-records
 
         func addPolicy(_ d: String, _ v: String) {
             let k = qxPolicyDomain(d)
@@ -919,7 +920,7 @@ enum NCConfImportPort {
                 case "no-ipv6":
                     noIPv6 = true
                 case "circumvent-ipv4-answer", "circumvent-ipv6-answer":
-                    rep.notes.append("[dns] " + key + " 没有对应项，已忽略")
+                    break // fix/qx-dns-records: a bare key without addresses is a no-op in QX too
                 default:
                     break
                 }
@@ -934,6 +935,11 @@ enum NCConfImportPort {
                 }
             }
             switch key {
+            case "circumvent-ipv4-answer", "circumvent-ipv6-answer":
+                // fix/qx-dns-records: kept as dns.circumvent-ipv4-answer / -ipv6-answer (the engine applies them).
+                let list = val.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                if !list.isEmpty { circumvent[key, default: []].append(contentsOf: list) }
+                continue
             case "server":
                 let (d, vDomain, ok) = qxDomainServer(val)
                 if ok {
@@ -1001,6 +1007,7 @@ enum NCConfImportPort {
         }
         if preferH3 { d["prefer-h3"] = true }
         if noIPv6 { d["ipv6"] = false }
+        for (k, v) in circumvent { d[k] = v }
         if !d.isEmpty { cfg["dns"] = d }
         if !hosts.isEmpty {
             cfg["hosts"] = hosts
@@ -1091,7 +1098,18 @@ enum NCConfImportPort {
         if let u = g["resource_parser_url"]?.trimmingCharacters(in: .whitespaces), u.hasPrefix("http") {
             set.parserURL = u
         }
-        for k in ["enhanced_compatibility_ssid_list", "dns_reject_domain_behavior", "icmp_auto_reply", "server_check_user_agent", "doh_user_agent"] {
+        // fix/qx-dns-records: dns_reject_domain_behavior → dns.reject-domain-behavior (loopback / no-error-no-answer /
+        // nxdomain / none; QX default loopback when absent).
+        if let v = g["dns_reject_domain_behavior"]?.trimmingCharacters(in: .whitespaces), !v.isEmpty {
+            if let b = NCDNSRejectBehavior(raw: v) {
+                var d = (cfg["dns"] as? [String: Any]) ?? [:]
+                d["reject-domain-behavior"] = b.rawValue
+                cfg["dns"] = d
+            } else {
+                rep.notes.append("[general] dns_reject_domain_behavior 无法识别，按默认 loopback：" + v)
+            }
+        }
+        for k in ["enhanced_compatibility_ssid_list", "icmp_auto_reply", "server_check_user_agent", "doh_user_agent"] {
             if let val = g[k], !val.isEmpty {
                 rep.notes.append("[general] " + k + " 没有对应设置，已忽略")
             }

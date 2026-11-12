@@ -1363,8 +1363,8 @@ final class NCDataPlane {
         // DNS-layer reject (the hosts path never sets an rcode) — file it as a
         // rejected query, not as a cache hit, so the DNS page can tell blocked
         // names apart from answered ones.
-        let line = parsed?.rcode == 3
-            ? NCDNSLogLine.rejected(name: name, type: type)
+        let line = NCDNSRejectBehavior.isRejectReply(reply) // fix/qx-dns-records: loopback / NODATA rejects too
+            ? NCDNSLogLine.rejected(name: name, type: type, reply: reply)
             : NCDNSLogLine.cacheHit(name: name, type: type, response: parsed)
         NativeLogRing.shared.add(type: "info", payload: line)
     }

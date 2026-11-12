@@ -20,16 +20,56 @@ final class NCSessionArchive {
     private var offsets: [Int64] = [] // byte offset of each line, in append order
     private var endOffset: Int64 = 0
     private var lastSeq: Int64 = 0
-    static let fuseBytes: Int64 = 256 * 1024 * 1024
+    /// Size fuse per session file. fix/qx-dns-records: 256 MB → 32 MB (bounded, and a resumed session rebuilds its
+    /// line index from the file — 32 MB is ~200k records / ~1.7 MB of index at most).
+    static let fuseBytes: Int64 = 32 * 1024 * 1024
+    /// fix/qx-dns-records: QX keeps the records of the last few VPN connections (traffic statistics: "最近几次 VPN 连接",
+    /// TF 741; script records: a new record per VPN start, older ones kept, TF 502/506). A new session moves the
+    /// previous session's file to `<name>.1.jsonl` (and `.1` to `.2`) instead of deleting it.
+    static let keptPrevious = 2
+    /// fix/qx-dns-records: `readAll` (the DNS history endpoint) returns at most the newest this many records, so one
+    /// long session cannot build a response bigger than the tunnel can hold.
+    static let readAllCap = 10_000
+    /// fix/qx-dns-records: set by the tunnel at start before the archives open — true when the previous tunnel
+    /// process ended without stopTunnel (jetsam / crash, relaunched by iOS) and its session continues.
+    static var resumeOnOpen = false
 
-    /// Creating an archive starts a fresh session: any previous session's file is truncated.
-    init(url: URL) {
+    /// Creating an archive starts a fresh session (the previous session's file is rotated to `.1`), unless `resume`
+    /// is set and the file exists: then the session continues — the index is rebuilt and appends go on after it.
+    init(url: URL, resume: Bool = false) {
         self.url = url
-        reset()
+        if resume, FileManager.default.fileExists(atPath: url.path) {
+            reopen()
+        } else {
+            Self.rotate(url)
+            reset()
+        }
     }
 
     var count: Int { lock.lock(); defer { lock.unlock() }; return offsets.count }
     var newestSeq: Int64 { lock.lock(); defer { lock.unlock() }; return lastSeq }
+
+    /// `<dir>/<name>.<n>.<ext>` — the n-th previous session's file (n ≥ 1).
+    static func previousURL(_ url: URL, _ n: Int) -> URL {
+        let ext = url.pathExtension
+        let base = url.deletingPathExtension().lastPathComponent
+        return url.deletingLastPathComponent().appendingPathComponent("\(base).\(n)" + (ext.isEmpty ? "" : ".\(ext)"))
+    }
+
+    /// Shift previous sessions down one slot (dropping the oldest) and move a non-empty current file to `.1`.
+    static func rotate(_ url: URL) {
+        let fm = FileManager.default
+        guard let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? NSNumber, size.int64Value > 0 else { return }
+        guard keptPrevious > 0 else { try? fm.removeItem(at: url); return }
+        try? fm.removeItem(at: previousURL(url, keptPrevious))
+        if keptPrevious > 1 {
+            for n in stride(from: keptPrevious - 1, through: 1, by: -1) {
+                let from = previousURL(url, n)
+                if fm.fileExists(atPath: from.path) { try? fm.moveItem(at: from, to: previousURL(url, n + 1)) }
+            }
+        }
+        try? fm.moveItem(at: url, to: previousURL(url, 1))
+    }
 
     /// Start over (new session / user reset): truncate the file and the index.
     func reset() {
@@ -43,6 +83,41 @@ final class NCSessionArchive {
         FileManager.default.createFile(atPath: url.path, contents: nil)
         handle = try? FileHandle(forWritingTo: url)
         handle?.seekToEndOfFile()
+    }
+
+    /// Resume: rebuild the line index by streaming the file (64 KB at a time, never the whole file in memory), drop
+    /// a torn last line (the process died mid-write), take the newest seq from the last complete line.
+    private func reopen() {
+        lock.lock(); defer { lock.unlock() }
+        offsets = []
+        endOffset = 0
+        lastSeq = 0
+        if let r = try? FileHandle(forReadingFrom: url) {
+            var lineStart: Int64 = 0
+            var pos: Int64 = 0
+            while true {
+                let chunk = r.readData(ofLength: 64 * 1024)
+                if chunk.isEmpty { break }
+                for (i, b) in chunk.enumerated() where b == 0x0A {
+                    let end = pos + Int64(i) + 1
+                    if end - lineStart > 1 { offsets.append(lineStart) }
+                    lineStart = end
+                }
+                pos += Int64(chunk.count)
+            }
+            endOffset = lineStart // anything after the last newline is a torn record: overwritten by the next append
+            if let last = offsets.last {
+                r.seek(toFileOffset: UInt64(last))
+                let data = r.readData(ofLength: Int(endOffset - last))
+                if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    lastSeq = (obj["seq"] as? NSNumber)?.int64Value ?? 0
+                }
+            }
+            r.closeFile()
+        }
+        handle = try? FileHandle(forWritingTo: url)
+        handle?.truncateFile(atOffset: UInt64(endOffset))
+        handle?.seek(toFileOffset: UInt64(endOffset))
     }
 
     /// Append one record. The record's `seq` must be non-decreasing across appends.
@@ -82,8 +157,8 @@ final class NCSessionArchive {
         return out
     }
 
-    /// Every record, OLDEST first (session history endpoints).
-    func readAll() -> [[String: Any]] {
-        read(afterSeq: 0, limit: Int.max).reversed()
+    /// The session's records, OLDEST first (session history endpoints) — the newest `limit` of them.
+    func readAll(limit: Int = NCSessionArchive.readAllCap) -> [[String: Any]] {
+        read(afterSeq: 0, limit: limit).reversed()
     }
 }

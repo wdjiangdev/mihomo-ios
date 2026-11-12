@@ -11,6 +11,9 @@ enum NCDNSUpstream: Equatable {
     case dot(host: String, port: Int)
     case doh(url: String)
     case doq(host: String, port: Int)
+    /// fix/qx-dns-records: the current network's resolver (QX `system`, Clash.Meta `system`), asked through
+    /// getaddrinfo from the extension (NCSystemDNS). A / AAAA only.
+    case system
     /// Ordered server list tried sequentially (short per-server timeout,
     /// the last server that answered goes first next time) — Clash.Meta /
     /// Surge use every configured nameserver, not just the first.
@@ -110,7 +113,18 @@ enum NCDNSUpstream: Equatable {
             if ref.port != 443 { url += ":\(ref.port)" }
             url += ref.path ?? "/dns-query"
             self = .doh(url: url)
-        case .dhcp, .system: return nil
+        case .system: self = .system
+        case .dhcp: return nil
         }
+    }
+
+    /// fix/qx-dns-records: QX always queries the network's own DNS servers together with the configured ones unless
+    /// `no-system` is set (sample.conf [dns]); the importer keeps that as a `system` entry in `nameserver`. `base` is
+    /// the forwardable part (firstUsable); `.system` joins its group when the nameserver list names it. A list that
+    /// holds only `system` keeps the bootstrap fallback firstUsable already picked, plus `.system`.
+    static func withSystem(_ base: NCDNSUpstream?, nameservers: [String]) -> NCDNSUpstream? {
+        let wantsSystem = nameservers.contains { $0.trimmingCharacters(in: .whitespaces).lowercased() == "system" }
+        guard wantsSystem else { return base }
+        return of((base?.members ?? []) + [.system])
     }
 }

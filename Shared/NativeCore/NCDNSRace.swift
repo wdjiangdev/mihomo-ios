@@ -32,6 +32,9 @@ enum NCDNSRace {
     static let attemptTimeout: TimeInterval = 2.5
     static let overallTimeout: TimeInterval = 5.0
     static let maxParallel = 2
+    /// fix/qx-dns-records: the QX mode — every server of a group at once (capped so a long list cannot open a socket
+    /// per entry for every query).
+    static let qxParallelCap = 6
 
     /// DNS header rcode (low 4 bits of byte 3); 0 for a too-short message.
     static func rcode(_ d: Data) -> UInt8 {
@@ -62,10 +65,11 @@ enum NCDNSRace {
                     attemptTimeout: TimeInterval = NCDNSRace.attemptTimeout,
                     overallTimeout: TimeInterval = NCDNSRace.overallTimeout,
                     maxParallel: Int = NCDNSRace.maxParallel,
+                    accept: ((Data) -> NCDNSCircumvent.Verdict)? = nil,
                     exchange: @escaping (NCDNSUpstream, @escaping (Data?) -> Void) -> Void,
                     completion: @escaping (Data?, Int?) -> Void) {
         run(list: list, start: start, queue: queue, trace: trace, stagger: stagger, attemptTimeout: attemptTimeout,
-            overallTimeout: overallTimeout, maxParallel: maxParallel,
+            overallTimeout: overallTimeout, maxParallel: maxParallel, accept: accept,
             cancellableExchange: { u, done in exchange(u, done); return nil }, completion: completion)
     }
 
@@ -77,6 +81,7 @@ enum NCDNSRace {
                     attemptTimeout: TimeInterval = NCDNSRace.attemptTimeout,
                     overallTimeout: TimeInterval = NCDNSRace.overallTimeout,
                     maxParallel: Int = NCDNSRace.maxParallel,
+                    accept: ((Data) -> NCDNSCircumvent.Verdict)? = nil,
                     cancellableExchange exchange: @escaping (NCDNSUpstream, @escaping (Data?) -> Void) -> (() -> Void)?,
                     completion: @escaping (Data?, Int?) -> Void) {
         let count = list.count
@@ -112,7 +117,19 @@ enum NCDNSRace {
                     st.cancels.removeValue(forKey: serial)
                     st.active -= 1
                     guard !st.done else { return }
-                    if let resp, isUsable(resp) { finish(resp, idx); return }
+                    if let resp, isUsable(resp) {
+                        // fix/qx-dns-records: QX circumvent-ipv4/ipv6-answer — an answer whose every address
+                        // is listed counts as this server's failure and the race waits for the others; a
+                        // partly listed answer is delivered without the listed records.
+                        switch accept?(resp) ?? .pass {
+                        case .pass: finish(resp, idx)
+                        case .filtered(let kept): finish(kept, idx)
+                        case .circumvented:
+                            trace?.add("\(server.label) answer circumvented \(ms() - began) ms")
+                            launchNextOrFinish()
+                        }
+                        return
+                    }
                     if let resp {
                         trace?.add("\(server.label) rcode \(rcode(resp) == 2 ? "SERVFAIL" : rcode(resp) == 5 ? "REFUSED" : "\(rcode(resp))") \(ms() - began) ms")
                         if st.lastResort == nil { st.lastResort = resp }
@@ -135,7 +152,11 @@ enum NCDNSRace {
         }
         queue.async {
             launch()
-            if count > 1, maxParallel > 1 {
+            if stagger <= 0 {
+                // fix/qx-dns-records: QX asks every configured server at once and the first usable answer wins
+                // (sample.conf: concurrent doh/doq servers; TF 700 "并发请求取响应最快的结果").
+                while !st.done, st.active < maxParallel, st.next < count { launch() }
+            } else if count > 1, maxParallel > 1 {
                 queue.asyncAfter(deadline: .now() + stagger) {
                     if !st.done, st.active < maxParallel, st.next < count { launch() }
                 }
@@ -160,12 +181,14 @@ extension NCDNSRace {
                                stagger: TimeInterval = NCDNSRace.stagger,
                                attemptTimeout: TimeInterval = NCDNSRace.attemptTimeout,
                                overallTimeout: TimeInterval = NCDNSRace.overallTimeout,
+                               maxParallel: Int = NCDNSRace.maxParallel,
+                               accept: ((Data) -> NCDNSCircumvent.Verdict)? = nil,
                                execute: @escaping (NCDNSUpstream, @escaping (Data?) -> Void) -> (() -> Void)?,
                                completion: @escaping (Data?, Int?) -> Void) {
         let suffix = NCDNSForwarder.mergeKeySuffix(query)
         let id = NCDNSForwarder.transactionID(query)
         run(list: list, start: start, queue: queue, trace: trace, stagger: stagger, attemptTimeout: attemptTimeout,
-            overallTimeout: overallTimeout,
+            overallTimeout: overallTimeout, maxParallel: maxParallel, accept: accept,
             cancellableExchange: { u, done in
                 let ticket = coordinator.submitCancellable(
                     key: "\(u)|" + suffix, id: id, callerQueue: queue,
@@ -185,6 +208,7 @@ extension NCDNSUpstream {
         case .doq(let h, let p): return "quic://\(h)" + (p == 853 ? "" : ":\(p)")
         case .doh(let u): return u.count > 64 ? String(u.prefix(64)) + "…" : u
         case .group(let l): return l.map { $0.label }.joined(separator: ",")
+        case .system: return "system"
         }
     }
 }

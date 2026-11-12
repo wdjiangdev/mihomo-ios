@@ -96,12 +96,16 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     override func startTunnel(options: [String: NSObject]?, completionHandler: @escaping (Error?) -> Void) {
         TunnelErrorLog.clear()
         StartupLog.begin("startTunnel")
-        NativeLogRing.install() // gap C4: /logs stream + /hark/logs history from NativeCore's own lines
-        NCStatsRecorder.shared.enableSessionArchive() // feat/session-records: closed connections archived for the whole session
-        StartupLog.write("startTunnel called, \(ProcessMemory.summary())")
         // fix/vpn-stays-on: the previous tunnel's alive marker is still there = it never reached stopTunnel (jetsam /
         // crash / power off). Recorded as 上次断开原因 so 诊断 shows why the VPN was found off.
+        // fix/qx-dns-records: read before the session archives open — such an end less than resumeWindow ago (and
+        // not an App update) continues the previous session's DNS / connection records and counters.
         let lastAlive = TunnelStopReason.takeUnexpectedEnd()
+        let resume = Self.shouldResumeSession(lastAlive)
+        NCSessionArchive.resumeOnOpen = resume
+        NativeLogRing.install(resume: resume) // gap C4: /logs stream + /hark/logs history from NativeCore's own lines
+        NCStatsRecorder.shared.enableSessionArchive(resume: resume) // feat/session-records: closed connections archived for the whole session
+        StartupLog.write("startTunnel called, \(ProcessMemory.summary())" + (resume ? ", resuming the previous session's records" : ""))
         if let lastAlive {
             StartupLog.write(lastAlive.acrossUpdate
                 ? "previous tunnel ended across an app update (last alive \(ISO8601DateFormatter().string(from: lastAlive.date)))"
@@ -362,6 +366,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let why = TunnelStopReason.describe(reason.rawValue)
         StartupLog.write("stopTunnel reason=\(reason.rawValue)（\(why)）, \(ProcessMemory.summary())")
         TunnelStopReason.record(reason.rawValue)
+        NCStatsRecorder.shared.persistNow(sync: true) // fix/qx-dns-records: last counters of the session (kept as .1 next start)
         // feat/loon-menu-notify: 更多 → 通知 → VPN 意外断开 (posted first: the extension goes away right after).
         if let key = TunnelNotice.unexpectedStopKey(reason.rawValue), NotifyPrefs.allows(.vpn) {
             TunnelNotice.post(kind: .vpn, title: NotifyText.loc("VPN 意外断开"), body: NotifyText.loc(key))
@@ -485,6 +490,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func sleep(completionHandler: @escaping () -> Void) {
         currentTraffic?.sample()
+        NCStatsRecorder.shared.persistNow() // fix/qx-dns-records: counters on disk before a possible jetsam in sleep
         NativeTunnelMemory.relieve()
         completionHandler()
     }
@@ -495,6 +501,16 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     override func wake() {
         stopLock.lock(); let running = !_stopped && traffic != nil; stopLock.unlock()
         if running { TunnelStopReason.markAlive() }
+    }
+
+    /// fix/qx-dns-records: a relaunch within this long of the previous tunnel's last heartbeat continues its session.
+    static let resumeWindow: TimeInterval = 30 * 60
+
+    /// The previous tunnel ended without stopTunnel (jetsam / crash), not across an App update, recently.
+    static func shouldResumeSession(_ lastAlive: (date: Date, acrossUpdate: Bool)?, now: Date = Date()) -> Bool {
+        guard let l = lastAlive, !l.acrossUpdate else { return false }
+        let age = now.timeIntervalSince(l.date)
+        return age >= -60 && age < resumeWindow
     }
 
     static func error(_ msg: String) -> NSError {
