@@ -276,9 +276,12 @@ final class NativeLogRing {
     }
 
     /// Wires StartupLog into the ring (once, at tunnel start).
-    static func install() {
-        NativeLogRing.shared.dnsArchive = NCSessionArchive(
-            url: AppShared.homeURL.appendingPathComponent("diag/session-dns.jsonl"))
+    /// fix/qx-dns-records: `resume` continues the previous session's DNS archive (tunnel relaunched after jetsam /
+    /// crash); the ring's seq then starts after the archived records so appends stay ordered.
+    static func install(resume: Bool = NCSessionArchive.resumeOnOpen) {
+        let archive = NCSessionArchive(url: AppShared.homeURL.appendingPathComponent("diag/session-dns.jsonl"), resume: resume)
+        NativeLogRing.shared.dnsArchive = archive
+        NativeLogRing.shared.seedSeq(UInt64(max(0, archive.newestSeq)))
         // fix/nc-mitm-live: the per-flow diagnostics limiter writes here
         NCDiagLimiter.shared.sink = { type, payload in NativeLogRing.shared.add(type: type, payload: payload) }
         StartupLog.tap = { tag, msg in
@@ -286,6 +289,11 @@ final class NativeLogRing {
                 : (msg.contains("跳过") || msg.lowercased().contains("warn") ? "warning" : "info")
             NativeLogRing.shared.add(type: lvl, payload: tag == "ext" ? msg : "[\(tag)] \(msg)")
         }
+    }
+
+    /// Never moves the seq backwards.
+    func seedSeq(_ floor: UInt64) {
+        lock.lock(); if seq < floor { seq = floor }; lock.unlock()
     }
 
     func add(type: String, payload: String) {

@@ -145,8 +145,33 @@ final class NCDNSForwarder {
                     else if let r = resp, !NCDNSRace.isUsable(r) { trace.add("\(upstream.label) rcode \(NCDNSRace.rcode(r)) \(ms) ms") }
                     else { trace.winner = upstream.label }
                 }
+                // fix/qx-dns-records: a lone server's answer goes through circumvent-ipv4/ipv6-answer too; fully
+                // listed = the query failed (QX: "the result will be ignored and marked as failed").
+                if let r = resp, NCDNSRace.isUsable(r) {
+                    switch Self.answerJudge?(r) ?? .pass {
+                    case .pass: completion(r)
+                    case .filtered(let kept): completion(kept)
+                    case .circumvented:
+                        trace?.add("\(upstream.label) answer circumvented")
+                        completion(nil)
+                    }
+                    return
+                }
                 completion(resp)
             })
+    }
+
+    /// fix/qx-dns-records: circumvent-ipv4-answer / circumvent-ipv6-answer of the running config (nil = none),
+    /// set by the engine on every load. Read once per answer.
+    private static let judgeLock = NSLock()
+    private static var _circumvent = NCDNSCircumvent()
+    static var circumvent: NCDNSCircumvent {
+        get { judgeLock.lock(); defer { judgeLock.unlock() }; return _circumvent }
+        set { judgeLock.lock(); _circumvent = newValue; judgeLock.unlock() }
+    }
+    static var answerJudge: ((Data) -> NCDNSCircumvent.Verdict)? {
+        let c = circumvent
+        return c.isEmpty ? nil : { c.judge($0) }
     }
 
     /// One real upstream exchange (the coordinator's execute step; no coalescing here). Returns a cancel handle for
@@ -165,6 +190,9 @@ final class NCDNSForwarder {
             Self.forwardDoH(query, urlString: url, queue: queue, completion: completion)
         case .doq(let host, let port):
             Self.forwardDoQ(query, host: host, port: port, queue: queue, completion: completion)
+        case .system:
+            let q = queue
+            NCSystemDNS.exchange(query) { resp in q.async { completion(resp) } }
         case .group:
             completion(nil) // unreachable: groups are handled in forward()
         }
@@ -178,6 +206,7 @@ final class NCDNSForwarder {
     /// 2.5 s per-server timeout): at most two exchanges in flight, the second 300 ms after the first, a failed or
     /// timed-out server starts the next one at once, first usable answer wins (NCDNSRace). The server that answered
     /// last time goes first. A late answer from a server already given up on is ignored.
+    /// fix/qx-dns-records: now every member is asked at once (QX), see the call below.
     private func forwardGroup(_ query: Data, list: [NCDNSUpstream], trace: NCDNSAttemptTrace?,
                               completion: @escaping (Data?) -> Void) {
         guard !list.isEmpty else { completion(nil); return }
@@ -188,7 +217,11 @@ final class NCDNSForwarder {
         // fix/nc-tails: each member attempt is a coordinated exchange the race can abandon (slot + socket freed when
         // it times out or loses), see NCDNSRace.runCoordinated. Members are single upstreams (NCDNSUpstream.of
         // flattens groups); per-member trace lines come from the race itself.
-        NCDNSRace.runCoordinated(query: query, list: list, start: start, queue: queue, trace: trace, execute: { [weak self] u, done in
+        // fix/qx-dns-records: QX semantics — every server of the group is asked at once (stagger 0, all members up
+        // to qxParallelCap) and the first usable answer that circumvent-ipv4/ipv6-answer does not reject wins.
+        NCDNSRace.runCoordinated(query: query, list: list, start: start, queue: queue, trace: trace,
+                                 stagger: 0, maxParallel: min(list.count, NCDNSRace.qxParallelCap),
+                                 accept: Self.answerJudge, execute: { [weak self] u, done in
             guard let self else { done(nil); return nil }
             return self.dispatchOnce(query, upstream: u, completion: done)
         }, completion: { resp, winner in

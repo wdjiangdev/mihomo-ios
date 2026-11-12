@@ -432,6 +432,24 @@ enum NCOpenConnect {
         }.joined(separator: "&")
     }
 
+    /// Decide whether an auth-request form can be answered from the static node credentials.
+    ///
+    /// Servers stage authentication differently: some return one combined username+password form,
+    /// others (ocserv ≤ 1.1.x, verified against 1.1.6) ask for the username first and the password
+    /// in a second form. A form is answerable when it asks for at least one field we can fill
+    /// (`answerable`) that has not been sent yet in this exchange (`alreadySent`); the return value
+    /// is the set of fields this reply newly sends. A form is refused when it asks for nothing we
+    /// can fill (empty form, OTP-only, …) or when everything it asks for was already sent — the
+    /// server is re-asking (wrong credentials, or a second factor a static node cannot provide).
+    static func authFieldsToSend(inputs: [String: String], answerable: Set<String>,
+                                 alreadySent: Set<String>) -> Set<String>? {
+        let fillable = Set(inputs.keys).intersection(answerable)
+        guard !fillable.isEmpty else { return nil }
+        let newFields = fillable.subtracting(alreadySent)
+        guard !newFields.isEmpty else { return nil }
+        return newFields
+    }
+
     static func escapeXML(_ string: String) -> String {
         return string
             .replacingOccurrences(of: "&", with: "&amp;")

@@ -226,12 +226,125 @@ final class NCStatsRecorder {
                       start: ms, closedAt: ms))
     }
 
+    private var rewriteBlockedSeq: UInt64 = 0
+
+    /// fix/baidumap-splash: a decrypted request answered locally by a
+    /// rewrite REJECT (NativeRewriteEngine) whose target is one the user
+    /// should see as blocked (NCBaiduMapSplash.blockRule). The connection
+    /// itself stays a MitM connection (it carries the app's other API
+    /// calls), so the block is its own synthetic record through the same
+    /// funnel as dnsBlocked / guardBlocked: chains ∋ REJECT → 已拦截,
+    /// deliberately NOT counted via opened().
+    func rewriteBlocked(host: String, rule: String, tls: Bool, at: Date = Date()) {
+        lock.lock(); rewriteBlockedSeq &+= 1; let n = rewriteBlockedSeq; lock.unlock()
+        let ms = Int64(at.timeIntervalSince1970 * 1000)
+        closed(Closed(seq: 0, id: "rewrite-\(n)", network: "tcp", srcPort: 0,
+                      dstIP: "", dstPort: tls ? 443 : 80, host: host, remote: host,
+                      chains: ["REJECT"], rule: rule, up: 0, down: 0,
+                      start: ms, closedAt: ms))
+    }
+
     /// A connection closed: into the ring (seq assigned here).
     /// feat/session-records: start archiving closed connections for this connection
     /// session (truncates any previous session's archive — reconnecting zeroes records).
-    func enableSessionArchive() {
+    func enableSessionArchive(resume: Bool = false) {
+        let dir = AppShared.homeURL.appendingPathComponent("diag", isDirectory: true)
+        enableSessionArchive(closedURL: dir.appendingPathComponent("session-closed.jsonl"),
+                             snapshotURL: dir.appendingPathComponent("session-stats.json"), resume: resume)
+    }
+
+    /// fix/qx-dns-records: the archive plus the counters snapshot (rule hits, policy / host bytes, totals, minute /
+    /// hour speed). `resume` (the previous tunnel process died without stopTunnel and iOS relaunched it within
+    /// PacketTunnelProvider.resumeWindow — Tern's choice, so a jetsam relaunch does not zero the 分流 / 拦截 records;
+    /// QX itself starts new records on every VPN start) continues the saved session: same session id (the App keeps its
+    /// cursor), counters restored, closed records appended after the archived ones. Otherwise a new session starts and
+    /// the previous one's files move to `.1` (QX keeps the last few connections' records). Tests pass their own URLs.
+    func enableSessionArchive(closedURL: URL, snapshotURL: URL, resume: Bool) {
+        let restored = resume ? NCStatsSnapshot.load(snapshotURL) : nil
+        if !resume || restored == nil { NCSessionArchive.rotate(snapshotURL) }
+        let archive = NCSessionArchive(url: closedURL, resume: resume && restored != nil)
         lock.lock(); defer { lock.unlock() }
-        closedArchive = NCSessionArchive(url: AppShared.homeURL.appendingPathComponent("diag/session-closed.jsonl"))
+        closedArchive = archive
+        snapshotFile = snapshotURL
+        lastSnapshotAt = Date()
+        if let r = restored {
+            applyLocked(r)
+            seq = max(seq, archive.newestSeq)
+            resumedSession = true
+        }
+    }
+
+    // MARK: counters snapshot (fix/qx-dns-records)
+
+    /// Where the counters are saved (nil = not persisting: the App, unit tests without a URL).
+    private var snapshotFile: URL?
+    private var lastSnapshotAt = Date.distantPast
+    /// Saved at most this often from the 1 s sampler; also on sleep and stop (persistNow).
+    static let snapshotInterval: TimeInterval = 60
+    private static let snapshotQueue = DispatchQueue(label: "nc.stats.snapshot", qos: .utility)
+    /// True when this process continued a saved session (diagnostics / tests).
+    private(set) var resumedSession = false
+
+    /// Build the snapshot under the lock (caller holds it).
+    private func snapshotLocked() -> NCStatsSnapshot {
+        NCStatsSnapshot(session: session, since: since, total: total, seq: seq,
+                        policies: policies.map { [$0.key, String($0.value.up), String($0.value.down)] },
+                        hosts: hosts.map { [$0.key, String($0.value.up), String($0.value.down)] },
+                        rules: rules.values.map { [$0.rule, $0.policy, String($0.hits)] },
+                        rejectStored: rejectStoredCount, rejectedMerged: rejectedMerged, rejectedOverflow: rejectedOverflow,
+                        minutes: mins.rows(), hours: hours.rows(), savedAt: Date().timeIntervalSince1970)
+    }
+
+    private func applyLocked(_ r: NCStatsSnapshot) {
+        session = r.session
+        Self.lastSession = max(Self.lastSession, r.session)
+        since = r.since
+        total = r.total
+        seq = r.seq
+        clock = 0
+        func ud(_ rows: [[String]], cap: Int) -> [String: UpDown] {
+            var d: [String: UpDown] = [:]
+            for row in rows.prefix(cap) where row.count == 3 {
+                clock &+= 1
+                d[Self.clip(row[0])] = UpDown(up: Int64(row[1]) ?? 0, down: Int64(row[2]) ?? 0, touched: clock)
+            }
+            return d
+        }
+        policies = ud(r.policies, cap: Self.policyCap)
+        hosts = ud(r.hosts, cap: Self.hostCap)
+        rules = [:]
+        for row in r.rules.prefix(Self.ruleCap) where row.count == 3 {
+            clock &+= 1
+            let key = Self.clip(row[0]) + "\u{1}" + Self.clip(row[1])
+            rules[key] = Hit(rule: Self.clip(row[0]), policy: Self.clip(row[1]), hits: Int(row[2]) ?? 0, touched: clock)
+        }
+        rejectStoredCount = r.rejectStored
+        rejectedMerged = r.rejectedMerged
+        rejectedOverflow = r.rejectedOverflow
+        mins = Ring(width: 6, cap: Self.minCap)
+        for row in r.minutes.suffix(Self.minCap) where row.count == 6 { mins.push(row) }
+        hours = Ring(width: 6, cap: Self.hourCap)
+        for row in r.hours.suffix(Self.hourCap) where row.count == 6 { hours.push(row) }
+        version &+= 1
+    }
+
+    /// Save now (sleep / stop / the 60 s tick). The JSON is built under the lock, written off it (atomic replace).
+    func persistNow(sync: Bool = false) {
+        lock.lock()
+        guard let url = snapshotFile else { lock.unlock(); return }
+        let snap = snapshotLocked()
+        lastSnapshotAt = Date()
+        lock.unlock()
+        let write: () -> Void = { _ = snap.save(url) }
+        if sync { write() } else { Self.snapshotQueue.async(execute: write) }
+    }
+
+    /// Caller holds the lock: the sampler's 60 s cadence.
+    private func maybePersistLocked(now: Date) {
+        guard let url = snapshotFile, now.timeIntervalSince(lastSnapshotAt) >= Self.snapshotInterval else { return }
+        lastSnapshotAt = now
+        let snap = snapshotLocked()
+        Self.snapshotQueue.async { _ = snap.save(url) }
     }
 
     func closed(_ c: Closed) {
@@ -376,6 +489,7 @@ final class NCStatsRecorder {
         // The 1 s sampler is the aggregation gate's metronome: even if the
         // session goes quiet, pending aggregates land within ~window + 1 s.
         flushExpiredRejectsLocked(now: Int64(now.timeIntervalSince1970 * 1000))
+        maybePersistLocked(now: now)
         let up = up0 &+ sideUp, down = down0 &+ sideDown
         let proxyUp = proxyUp0 &+ sideProxyUp, proxyDown = proxyDown0 &+ sideProxyDown
         let at = now.timeIntervalSince1970

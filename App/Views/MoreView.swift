@@ -559,7 +559,17 @@ struct SettingsView: View {
                     Text("调试").tag("debug")
                 }
                 Toggle("域名嗅探（Sniffer）", isOn: $o.sniffer)
-                Toggle("HTTPDNS 守卫", isOn: $o.httpdnsGuard)
+                // fix/baidumap-splash: the switch also carries the built-in Baidu Maps splash protection
+                // (NCBaiduMapSplash) — said under the title so turning it off is an informed choice.
+                Toggle(isOn: $o.httpdnsGuard) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("HTTPDNS 守卫")
+                        Text("含百度地图开屏广告拦截；其中 HTTPS 部分需开启重写与 HTTPS 解密，并信任证书")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityIdentifier("settings.httpdnsGuard")
             } header: { Text("内核") } footer: {
                 Text("这些选项会覆盖配置文件里的同名字段。DNS 模式在「工具 → DNS」中设置，IPv6 与局域网共享在「更多 → 高级设置 → 连接方式」中设置。")
             }
@@ -568,10 +578,10 @@ struct SettingsView: View {
             Section {
                 Toggle("切换节点或模式时断开所有连接", isOn: $closeOnSwitch)
                     .accessibilityIdentifier("settings.closeOnSwitch")
-                Toggle("网络变化时清空 DNS 缓存", isOn: $o.flushDNSOnNetworkChange)
+                Toggle("网络变化时让 DNS 缓存过期", isOn: $o.flushDNSOnNetworkChange)
                     .accessibilityIdentifier("settings.flushDNS")
             } header: { Text("连接") } footer: {
-                Text("断开后，App 会经由新选的节点或模式重新连接；关闭则已有连接保持原来的节点直到结束。Wi-Fi 与蜂窝网络切换或换了 Wi-Fi 时清空 DNS 缓存，避免沿用上一个网络的解析结果。")
+                Text("断开后，App 会经由新选的节点或模式重新连接；关闭则已有连接保持原来的节点直到结束。Wi-Fi 与蜂窝网络切换或换了 Wi-Fi 时把 DNS 缓存标记为过期（与 Quantumult X 相同）：过期结果先用于连接，同时重新查询，新结果到了就替换。")
             }
             .listRowBackground(Theme.card)
 

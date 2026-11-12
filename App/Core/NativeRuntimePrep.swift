@@ -109,9 +109,13 @@ enum NativeRuntimePrep {
             // lock, so no other prepare can change the outputs between the check and the start.
             let profilesDir = profile.deletingLastPathComponent().path
             let build = NCPrepMarkers.currentBuild
+            // fix/baidumap-splash: whether the Tern CA is trusted decides if the built-in Baidu Maps rewrite joins the
+            // generation (NCBaiduMapSplash.httpsLayerEligible), and trust lives in the system store, not in a file the
+            // fingerprint sees — so it is part of the fingerprint explicitly (trusting the CA later re-prepares).
+            let caTrusted = NCCAManager.checkTrust(home: home)
             func inputs() -> String {
                 NativeRuntimePrepCache.inputsFingerprint(home: home, profilesDir: profilesDir, extraFiles: [profilesIndex],
-                                                         profilePath: profile.path, build: build)
+                                                         profilePath: profile.path, build: build + "|ca-trusted=\(caTrusted)")
             }
             timing?.lap("lock")
             if allowCached {
@@ -123,7 +127,7 @@ enum NativeRuntimePrep {
                 }
             }
             NativeRuntimePrepCache.invalidate(home: home)
-            let err = prepareSyncLocked(home: home, profile: profile, timing: timing)
+            let err = prepareSyncLocked(home: home, profile: profile, caTrusted: caTrusted, timing: timing)
             if err == nil {
                 // Taken after the commit: files the prepare itself wrote are part of the recorded state.
                 NativeRuntimePrepCache.write(home: home, .init(inputs: inputs(), outputs: NativeRuntimePrepCache.outputsFingerprint(home: home)))
@@ -140,7 +144,7 @@ enum NativeRuntimePrep {
         let key = (home as NSString).appendingPathComponent(".nativecore-prepare.lock")
         return NCPathLock.shared.withLock(for: key) { () -> String? in
             NativeRuntimePrepCache.invalidate(home: home)
-            return prepareSyncLocked(home: home, profile: profile)
+            return prepareSyncLocked(home: home, profile: profile, caTrusted: NCCAManager.checkTrust(home: home))
         }
     }
 
@@ -159,7 +163,7 @@ enum NativeRuntimePrep {
         return out.filter { NCResources.isRemote($0) }
     }
 
-    private static func prepareSyncLocked(home: String, profile: URL, timing: PrepTiming? = nil) -> String? {
+    private static func prepareSyncLocked(home: String, profile: URL, caTrusted: Bool, timing: PrepTiming? = nil) -> String? {
         PrepTransaction.removeStale(home: home)
         // fix/nc-vpn-start-crash: a marker still here = the previous prepare died inside the app process (a trap
         // cannot be caught). If it died building the rewrite snapshot, quarantine that exact rule set so the next
@@ -203,6 +207,13 @@ enum NativeRuntimePrep {
         let cfg: NCEngineConfig? = safeMode ? nil : NCEngineConfig.load(home: home)
         timing?.lap("engine cfg", cfg.map { "\($0.modules.filter { $0.enabled }.count) modules" } ?? "safe mode")
         let rs: NCEngineRuleset? = cfg.map { NCMitmBuild.build(home: home, cfg: $0) }
+        // fix/baidumap-splash: the built-in Baidu Maps splash protection. DNS layer whenever the HTTPDNS guard
+        // switch is on (prepended in the inject below); the MitM rewrite only with the user's 重写 + MitM on and a
+        // trusted CA (NCBaiduMapSplash.httpsLayerEligible) — merged last, like one more enabled module.
+        let builtinGuard = !safeMode && req.settings.core.httpdnsGuard
+        if let rs, NCBaiduMapSplash.httpsLayerEligible(guardOn: builtinGuard, safeMode: safeMode, cfg: cfg, caTrusted: caTrusted) {
+            NCBaiduMapSplash.merge(into: rs)
+        }
         timing?.lap("modules parse", rs.map { "\($0.rules.count) rules, \($0.hostnames.count) hosts" } ?? "-")
         // fix/nc-open-6-10 #8: one resource cache shared by the script manifest and the rewrite snapshot, with every
         // missing remote script / body downloaded in parallel up front (they used to be fetched one by one inside
@@ -239,6 +250,7 @@ enum NativeRuntimePrep {
                         raw["rules"] = .array([.string("AND,((NETWORK,UDP),(DST-PORT,443)),REJECT")] + raw.list("rules"))
                     }
                 }
+                if builtinGuard { NCBaiduMapSplash.prependCoreRules(&raw) }
                 // Geosite list writes: the old core ignores their errors
                 // (`_ = writeAtomicFile` in lowerForNative) — surface
                 // them as warnings, not a failed prepare.

@@ -27,6 +27,8 @@ import Foundation
 ///   table is empty until the first answers land, a failed lookup keeps
 ///   the domain's previous addresses, and a completed-but-empty answer
 ///   replaces them (the service really has no addresses right now).
+/// - Fixed seeds (fix/baidumap-splash): documented HTTPDNS service IPs
+///   (`seedIPs`) hit whenever the guard is on, with or without answers.
 /// - Refreshed every 30 minutes and on every engine (re)load, which is
 ///   the config-change hook.
 /// - Persisted (fix/httpdns-guard-persist): every completed refresh
@@ -52,6 +54,33 @@ final class NCHTTPDNSGuard {
         "httpdns.alicdn.com",
         "httpdns-api.aliyuncs.com",
     ]
+
+    /// fix/baidumap-splash: FIXED service addresses, always in the table while the guard is on (no resolution,
+    /// no persistence, never retired by a refresh). Resolving the watch domains alone never fired on device: the
+    /// Baidu SDKs do not look their HTTPDNS service up by name, they dial hard-coded IPs (the device log showed
+    /// `180.76.x.x:443 → passthrough(no SNI)`), while httpdns.baidu.com resolves to a different block
+    /// (110.242.x.x). Sources:
+    /// - 180.76.76.200 — Baidu AI Cloud HTTPDNS 「访问入口说明」: "入口(BGP anycast VIP)：180.76.76.200", API
+    ///   `http(s)://180.76.76.200/v4/resolve?…`, HTTPS verified as httpdns.baidubce.com
+    ///   (https://cloud.baidu.com/doc/HTTPDNS/s/Njwvxm8ub, https://cloud.baidu.com/doc/HTTPDNS/s/Vjwvxm96x).
+    /// - 180.76.76.220 — Baidu AI Cloud HTTPDNS second static VIP (VirgilClyne/GetSomeFries HTTPDNS.Block
+    ///   「BaiduBCE」 IP-CIDR 180.76.76.220/32, Surge `^http://180.76.76.220/v4/resolve - reject`).
+    /// - 180.76.76.112 — Baidu's app-family HTTPDNS (BDHttpDns in Baidu Maps / Tieba): VirgilClyne HTTPDNS.Block
+    ///   「Baidu」 IP-CIDR 180.76.76.112/32, Surge `^http://180.76.76.112/v4/resolve - reject`, and the IP the
+    ///   V2EX t/1013571 QX fix put in the MitM list.
+    /// All three are resolver endpoints only (no app content behind them), so refusing them costs the app
+    /// nothing but its private resolver — the same outcome QX gets by MitM-ing them (see NCBaiduMapSplash for the
+    /// guard-before-MitM order).
+    static let seedIPs: [String: String] = [
+        "180.76.76.112": "httpdns.baidu.com",
+        "180.76.76.200": "httpdns.baidubce.com",
+        "180.76.76.220": "httpdns.baidubce.com",
+    ]
+    private static let seedTable: [NCIP: String] = {
+        var m: [NCIP: String] = [:]
+        for (t, d) in seedIPs { if let ip = NCIP(t) { m[ip] = d } }
+        return m
+    }()
 
     static let refreshInterval: TimeInterval = 30 * 60
 
@@ -103,7 +132,9 @@ final class NCHTTPDNSGuard {
     }
 
     /// Disabling also empties the table: a guard the user turned off must
-    /// not keep rejecting from a stale snapshot.
+    /// not keep rejecting from a stale snapshot. This is the EXPLICIT
+    /// disable (the engine calls it when the loaded config says off), so
+    /// the persisted copy goes too.
     func setEnabled(_ on: Bool) {
         lock.lock()
         enabled = on
@@ -111,9 +142,20 @@ final class NCHTTPDNSGuard {
         let file = on ? nil : storeFile
         lock.unlock()
         // fix/httpdns-guard-persist: the disk copy goes with the memory
-        // one — a stale file must not resurrect a table the user (or a
-        // config reload) turned off.
+        // one — a stale file must not resurrect a table the user turned off.
         if let file { try? FileManager.default.removeItem(at: file) }
+    }
+
+    /// fix/baidumap-splash: the engine is going away (tunnel stop, memory
+    /// eviction) — disarm in memory but KEEP the persisted table. Before,
+    /// stop() went through setEnabled(false) and deleted the file on every
+    /// tunnel stop, so the relaunch-armed-from-the-first-flow promise of
+    /// #213 never held: the next start always began with an empty table.
+    private func disarmKeepingStore() {
+        lock.lock()
+        enabled = false
+        ipToDomain = [:]
+        lock.unlock()
     }
 
     /// The watched HTTPDNS domain this destination IP currently belongs
@@ -124,7 +166,7 @@ final class NCHTTPDNSGuard {
     func domain(for ip: NCIP) -> String? {
         lock.lock(); defer { lock.unlock() }
         guard enabled else { return nil }
-        return ipToDomain[ip]
+        return ipToDomain[ip] ?? Self.seedTable[ip]
     }
 
     var ipCount: Int {
@@ -245,7 +287,7 @@ final class NCHTTPDNSGuard {
             self.timer = nil
             self.resolver = nil
         }
-        setEnabled(false)
+        disarmKeepingStore()
     }
 
     // MARK: cold-start fill (fix/httpdns-guard-persist)
