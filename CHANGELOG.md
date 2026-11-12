@@ -4,6 +4,8 @@
 
 ## 未发布
 
+## v0.20.3（NativeCore 预览版，预发布）
+
 - **Egern 2.21 对齐：来源 IP 规则**。`SRC-IP,192.168.1.10`（Surge / Egern 写法，裸 IP 按 /32、/128）、`SRC-IP-CIDR6` / `SRC-IP6-CIDR` 按 `SRC-IP-CIDR` 处理；新增 `IP-SUFFIX` / `SRC-IP-SUFFIX`（按地址末尾若干位匹配，同 Clash.Meta）和 `SRC-IP-ASN`；规则集、逻辑规则、规则校验、Egern 模块 `src_ip` 都能识别，规则编辑器可直接选「SRC-IP-CIDR」。iOS 上只有通过「局域网共享」（HTTP / SOCKS 代理、热点）连进来的设备有自己的来源 IP，本机流量的来源是 VPN 地址，规则编辑器会提示。局域网共享的连接现在把客户端地址交给规则匹配（以前所有来源规则在这里都不会命中）。
 - **DNS 上游健康检测**：连接 VPN 后每 60 秒向配置里的每个主 DNS / 回落 DNS / 引导 DNS（UDP、TCP、DoH、DoT、DoQ，最多 8 个）查询一次 `www.apple.com`，5 秒超时，连续 2 次失败算异常，超过 800 ms 显示「较慢」。工具 → DNS 新增「上游状态」，每个上游显示状态与延迟，有异常时顶部红色提示；更多 → 通知 新增「DNS 上游异常」开关（默认开）。探测走独立的转发器，不经过查询缓存，不影响正常解析。
 - **连接详情「出站节点」**：经代理的连接显示节点名称、类型、链路、服务器地址与端口，以及服务器 IP 在本机 GeoIP / ASN 数据库里的地区和 ASN（不向外部服务查询）；服务器是域名或数据库里查不到时，显示按节点名称推断的地区并注明「按名称推断」；这个节点在「流媒体解锁」里检测过出口时一并显示出口位置。
@@ -13,6 +15,8 @@
 - **DNS 层拦截默认改为 QX 的 loopback**：被 REJECT 规则拦截的域名返回 127.0.0.1 / ::1（TTL 10），以前返回 NXDOMAIN；QX 配置的 `dns_reject_domain_behavior`（loopback / no-error-no-answer / nxdomain / none）会被导入并生效，DNS 日志按实际方式标注拦截。
 - **分流匹配用的 DNS 缓存按 QX 处理**：按应答 TTL 缓存（10 秒 – 1 小时），过期结果先用于匹配、同时后台重新查询；网络变化时把缓存标记为过期而不是清空（设置项改名为「网络变化时让 DNS 缓存过期」）。分流匹配阶段发起的查询也写入 DNS 日志。
 - **分流 / 拦截 / DNS 记录持久化**：扩展被系统终止后 30 分钟内自动重连会接着上次的连接记录、DNS 记录和统计（规则命中、策略 / 主机流量、速度历史），统计每 60 秒、休眠和断开时存盘；新连接开始时保留最近两次连接的记录文件；单个记录文件上限从 256 MB 降到 32 MB，DNS 历史一次最多返回最新 1 万条。
+- **WireGuard / AmneziaWG endpoint 绑定黑洞修复**：开了「接管所有网络流量」时，WG 的 endpoint 连接不再钉死在创建时刻的物理接口上（只保留禁止隧道接口防环）；一次握手尝试内已发 ≥4 次 initiation、0 收包、持续 ≥20 秒时判定黑洞并重建连接（20 秒限频），重建打启动日志留指纹。根因假设的前提尚未经诊断包证实，真机验证仍需实测。
+- **OpenConnect 分步认证 + MASQUE-UDP authority**：ocserv 分步 plain 认证（先 username 表单、再 password 表单）现在能登录完（以前第二步表单一律判失败）；CONNECT-UDP 的 `:authority` 改从 URI 模板取（以前填拨号地址，服务端校验 400）。MASQUE-IP 的故障在 zhiheng kit 服务端（netns NAT 路径），已在服务器上修好；三项对真实 kit 服务端的互通 E2E（proto5-zh）4/4 通过。test99 仍不会给这三个出值（拨号器只在扩展里、MASQUE-UDP 只承载 UDP），以互通 E2E 为准。
 - **百度地图开屏广告：内置 Quantumult X 同款拦截**（真机反馈：build 569 上每次冷启动都有开屏，同一配置在 QX 下没有）。「更多 → 高级设置 → HTTPDNS 守卫」开关（默认开）现在同时负责：
   - DNS 层拒绝 `afd.baidu.com`、`afdconf.baidu.com`、`lc.map.baidu.com`、`httpdns.baidu.com`、`httpdns.baidubce.com`；
   - HTTPDNS 守卫内置百度 HTTPDNS 的固定入口 IP（180.76.76.112 / .200 / .220，百度智能云文档与社区规则），SDK 直接连 IP 时也会被拒绝，App 退回系统 DNS；之前守卫只解析域名，拿到的 IP 与 SDK 实际连接的不同，从未生效；
